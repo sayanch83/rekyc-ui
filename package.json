@@ -1,0 +1,13 @@
+{
+  "name": "rekyc-stencil",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "stencil build",
+    "start": "stencil build --dev --watch --serve --port 3333",
+    "generate": "stencil generate"
+  },
+  "devDependencies": {
+    "@stencil/core": "^4.22.0"
+  },
+  "license": "MIT"
+}
