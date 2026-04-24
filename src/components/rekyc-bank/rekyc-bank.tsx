@@ -407,12 +407,10 @@ export class RekycBank {
             <span class="sidebar-brand">National Bank</span>
           </div>
           <div class="sidebar-section">Re-KYC</div>
-          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>📋 Dashboard</div>
-          <div class="sidebar-item">👥 Customers</div>
-          <div class="sidebar-item">Doc Documents</div>
-          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>📊 Analytics</div>
+          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>Dashboard</div>
+          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>Analytics</div>
           <div class="sidebar-section">Settings</div>
-          <div class="sidebar-item">⚙️ Configuration</div>
+          <div class="sidebar-item">Configuration</div>
         </div>
 
         {/* Main content */}

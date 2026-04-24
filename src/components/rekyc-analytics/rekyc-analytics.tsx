@@ -140,6 +140,7 @@ const ZONES: Record<string, ZoneData> = {
 @Component({ tag: 'rekyc-analytics', styleUrl: 'rekyc-analytics.css', shadow: false })
 export class RekycAnalytics {
   @State() period = '30d';
+  @State() view: 'zm' | 'rm' = 'zm';
   @State() expanded: Record<string, boolean> = {};
   @State() filterZone = 'all';
   private canvasTrend: HTMLCanvasElement;
@@ -245,7 +246,6 @@ export class RekycAnalytics {
             <div class="tcol-n">Pending</div>
             <div class="tcol-n">Rejected</div>
             <div class="tcol-tat">Avg TAT</div>
-            <div class="tcol-pct">Completion</div>
           </div>
 
           {zones.map(([zoneName, zData]) => {
@@ -265,7 +265,6 @@ export class RekycAnalytics {
                   <div class="tcol-n amber">{zData.pending}</div>
                   <div class="tcol-n red">{zData.rejected}</div>
                   <div class="tcol-tat"><span class="tat-dot" style={{ background: '#64748B' }}>—</span></div>
-                  <div class="tcol-pct">{this.renderPctBar(zData.completed, zData.total)}</div>
                 </div>
 
                 {/* RM rows (visible when zone expanded) */}
@@ -288,7 +287,6 @@ export class RekycAnalytics {
                         <div class="tcol-n amber">{rm.pending}</div>
                         <div class="tcol-n red">{rm.rejected}</div>
                         <div class="tcol-tat"><span class="tat-chip" style={{ color: rmTatColor, background: rmTatColor + '18' }}>{rm.avgTat}d</span></div>
-                        <div class="tcol-pct">{this.renderPctBar(rm.completed, rm.total)}</div>
                       </div>
 
                       {/* Agent rows (visible when RM expanded) */}
@@ -312,7 +310,6 @@ export class RekycAnalytics {
                               <div class="tcol-n amber">{agent.pending}</div>
                               <div class="tcol-n red">{agent.rejected}</div>
                               <div class="tcol-tat"><span class="tat-chip" style={{ color: agTatColor, background: agTatColor + '18' }}>{agent.avgTat}d</span></div>
-                              <div class="tcol-pct">{this.renderPctBar(agent.completed, agent.total)}</div>
                             </div>
 
                             {/* Case rows (visible when agent expanded) */}
@@ -379,7 +376,6 @@ export class RekycAnalytics {
                 <div class="tcol-n amber">{t.pending}</div>
                 <div class="tcol-n red">{t.rejected}</div>
                 <div class="tcol-tat">—</div>
-                <div class="tcol-pct">{this.renderPctBar(t.completed, t.total)}</div>
               </div>
             );
           })()}
@@ -409,16 +405,118 @@ export class RekycAnalytics {
     );
   }
 
+  renderRMView() {
+    // RM view: Kiran Desai's region (West / Kiran Desai) as demo
+    const zone = ZONES['West'];
+    const rm = zone.rms['Kiran Desai'];
+    const tatColor = (t: number) => t <= 3.5 ? '#0B7A5B' : t <= 5.5 ? '#B8860B' : '#900909';
+
+    return (
+      <div class="ana-body">
+        {/* RM-level stat boxes */}
+        <div class="stat-boxes-rm">
+          {this.renderStatBox('My Total Cases', rm.total, '#074994', '#E8F0F8', 'West Zone')}
+          {this.renderStatBox('Completed', rm.completed, '#0B7A5B', '#E6F5F0', Math.round(rm.completed/rm.total*100) + '%')}
+          {this.renderStatBox('Pending', rm.pending, '#B8860B', '#FFF8E6', Math.round(rm.pending/rm.total*100) + '%')}
+          {this.renderStatBox('Avg TAT', rm.avgTat + 'd', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
+        </div>
+
+        {/* Agent cards */}
+        <div class="rm-section-title">
+          My Agents
+          <span class="level-badge">Kiran Desai — West Zone</span>
+        </div>
+        <div class="rm-agent-grid">
+          {rm.agents.map(agent => {
+            const agKey = 'rm|' + agent.name;
+            const agOpen = this.isOpen(agKey);
+            const agTat = tatColor(agent.avgTat);
+            const pct = Math.round(agent.completed / agent.total * 100);
+            const pctColor = pct >= 60 ? '#0B7A5B' : pct >= 40 ? '#B8860B' : '#900909';
+            return (
+              <div class="rm-agent-card">
+                <div class="rm-agent-header" onClick={() => this.toggle(agKey)}>
+                  <div class="rm-ah-name">
+                    <span class="expand-icon">{this.expandIcon(agKey)}</span>
+                    <span class="row-icon agent-icon">A</span>
+                    {agent.name}
+                    <span class="agent-label">Field Agent</span>
+                  </div>
+                  <div class="rm-ah-n">{agent.total}</div>
+                  <div class="rm-ah-n green">{agent.completed}</div>
+                  <div class="rm-ah-n amber">{agent.pending}</div>
+                  <div class="rm-ah-n red">{agent.rejected}</div>
+                  <div class="rm-ah-tat">
+                    <span class="tat-chip" style={{ color: agTat, background: agTat + '18' }}>{agent.avgTat}d</span>
+                  </div>
+                </div>
+                {agOpen && (
+                  <div class="case-table-wrap" style={{ margin: '0 0 0 0', borderRadius: '0', borderLeft: 'none', borderRight: 'none', borderBottom: 'none' }}>
+                    <table class="case-table">
+                      <thead>
+                        <tr>
+                          <th class="ct-id">Case ID</th>
+                          <th class="ct-cust">Customer</th>
+                          <th class="ct-status">Status</th>
+                          <th class="ct-risk">Risk</th>
+                          <th class="ct-tat">TAT (days)</th>
+                          <th class="ct-stat">TAT Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {agent.cases.map(c => {
+                          const tc = tatColor(c.tat);
+                          const tatLabel = c.tat <= 3.5 ? 'On Track' : c.tat <= 5.5 ? 'Delayed' : 'Breached';
+                          const riskC = c.risk === 'High' ? '#900909' : c.risk === 'Medium' ? '#B8860B' : '#0B7A5B';
+                          const riskBg = c.risk === 'High' ? '#FDE8E8' : c.risk === 'Medium' ? '#FFF8E6' : '#E6F5F0';
+                          const stC = c.status === 'Completed' ? '#0B7A5B' : c.status === 'Rejected' ? '#900909' : '#B8860B';
+                          const stBg = c.status === 'Completed' ? '#E6F5F0' : c.status === 'Rejected' ? '#FDE8E8' : '#FFF8E6';
+                          return (
+                            <tr>
+                              <td class="ct-id">{c.id}</td>
+                              <td class="ct-cust">{c.customer}</td>
+                              <td class="ct-status"><span class="c-pill" style={{ color: stC, background: stBg }}>{c.status}</span></td>
+                              <td class="ct-risk"><span class="c-pill" style={{ color: riskC, background: riskBg }}>{c.risk}</span></td>
+                              <td class="ct-tat">{c.tat}d</td>
+                              <td class="ct-stat"><span class="c-pill" style={{ color: tc, background: tc + '18' }}>{tatLabel}</span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div class="case-tat-legend">
+                      <span style={{ color: '#0B7A5B' }}>≤ 3.5d: On Track</span>
+                      <span style={{ color: '#B8860B' }}>3.5–5.5d: Delayed</span>
+                      <span style={{ color: '#900909' }}>&gt; 5.5d: Breached</span>
+                      <span class="tat-sla">SLA: 5 days &nbsp;|&nbsp; Agent avg: {agent.avgTat}d</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   render() {
     const t = this.totals;
 
     return (
       <div class="analytics-wrap">
-        {/* Header */}
+        {/* Compact header */}
         <div class="ana-header">
-          <div>
-            <div class="ana-greeting">Re-KYC Analytics Dashboard</div>
-            <div class="ana-sub">National Bank Ltd. • As of 24 Apr 2026</div>
+          <div class="ana-header-left">
+            <div>
+              <div class="ana-greeting">Re-KYC Analytics</div>
+              <div class="ana-sub">National Bank Ltd. • 24 Apr 2026</div>
+            </div>
+            {/* View toggle */}
+            <div class="view-tabs">
+              <button class={this.view === 'zm' ? 'vtab active' : 'vtab'} onClick={() => { this.view = 'zm'; }}>Zonal Manager View</button>
+              <button class={this.view === 'rm' ? 'vtab active' : 'vtab'} onClick={() => { this.view = 'rm'; }}>Regional Manager View</button>
+            </div>
           </div>
           <div class="ana-controls">
             <div class="period-tabs">
@@ -430,58 +528,64 @@ export class RekycAnalytics {
           </div>
         </div>
 
-        <div class="ana-body">
-          {/* Stat boxes */}
-          <div class="stat-boxes-row">
-            {this.renderStatBox('Total KYC Due', t.total, '#074994', '#E8F0F8', '100%')}
-            {this.renderStatBox('Completed', t.completed, '#0B7A5B', '#E6F5F0', Math.round(t.completed/t.total*100) + '%')}
-            {this.renderStatBox('Pending', t.pending, '#B8860B', '#FFF8E6', Math.round(t.pending/t.total*100) + '%')}
-            {this.renderStatBox('Rejected', t.rejected, '#900909', '#FDE8E8', Math.round(t.rejected/t.total*100) + '%')}
-            {this.renderStatBox('High Risk', 92, '#6D28D9', '#F3E8FF', '8.5%')}
-            {this.renderStatBox('Avg TAT', '4.2d', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
-          </div>
+        {/* RM View */}
+        {this.view === 'rm' && this.renderRMView()}
 
-          {/* Charts row — 3 columns */}
-          <div class="charts-top-row">
-            <div class="chart-card">
-              <div class="chart-title">Completion Rate Trend</div>
-              <div class="chart-sub">KYC completions across last 8 weeks</div>
-              <div style={{ height: '160px', position: 'relative' }}>
-                <canvas ref={el => this.canvasTrend = el as HTMLCanvasElement} />
-              </div>
+        {/* ZM View */}
+        {this.view === 'zm' && (
+          <div class="ana-body">
+            {/* Stat boxes */}
+            <div class="stat-boxes-row">
+              {this.renderStatBox('Total KYC Due', t.total, '#074994', '#E8F0F8', '100%')}
+              {this.renderStatBox('Completed', t.completed, '#0B7A5B', '#E6F5F0', Math.round(t.completed/t.total*100) + '%')}
+              {this.renderStatBox('Pending', t.pending, '#B8860B', '#FFF8E6', Math.round(t.pending/t.total*100) + '%')}
+              {this.renderStatBox('Rejected', t.rejected, '#900909', '#FDE8E8', Math.round(t.rejected/t.total*100) + '%')}
+              {this.renderStatBox('High Risk', 92, '#6D28D9', '#F3E8FF', '8.5%')}
+              {this.renderStatBox('Avg TAT', '4.2d', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
             </div>
-            <div class="chart-card">
-              <div class="chart-title">Risk Category Mix</div>
-              <div class="chart-sub">Total: {t.total} cases</div>
-              <div class="donut-row">
-                <div style={{ height: '110px', width: '110px', position: 'relative', flex: '0 0 110px' }}>
-                  <canvas ref={el => this.canvasDoughnut = el as HTMLCanvasElement} />
-                </div>
-                <div class="donut-legend-col">
-                  <div class="dl-item"><span class="dl-dot" style={{ background: '#900909' }} /><span>High</span><strong>92</strong></div>
-                  <div class="dl-item"><span class="dl-dot" style={{ background: '#FFAA00' }} /><span>Medium</span><strong>312</strong></div>
-                  <div class="dl-item"><span class="dl-dot" style={{ background: '#0B7A5B' }} /><span>Low</span><strong>682</strong></div>
+
+            {/* Charts — taller */}
+            <div class="charts-top-row">
+              <div class="chart-card">
+                <div class="chart-title">Completion Rate Trend</div>
+                <div class="chart-sub">KYC completions across last 8 weeks</div>
+                <div style={{ height: '200px', position: 'relative' }}>
+                  <canvas ref={el => this.canvasTrend = el as HTMLCanvasElement} />
                 </div>
               </div>
-            </div>
-            <div class="chart-card">
-              <div class="chart-title">KYC Pipeline</div>
-              <div class="chart-sub">Stage distribution — {t.total} total</div>
-              <div class="pipeline">
-                {this.renderPipelineRow('Completed', t.completed, t.total, '#0B7A5B')}
-                {this.renderPipelineRow('Pending VKYC', 118, t.total, '#B8860B')}
-                {this.renderPipelineRow('Pending Doc Upload', 124, t.total, '#FFAA00')}
-                {this.renderPipelineRow('Pending Verification', 86, t.total, '#6D28D9')}
-                {this.renderPipelineRow('In Progress', 96, t.total, '#3067A6')}
-                {this.renderPipelineRow('Initiated', 105, t.total, '#ACC2DB')}
-                {this.renderPipelineRow('Rejected', t.rejected, t.total, '#900909')}
+              <div class="chart-card">
+                <div class="chart-title">Risk Category Mix</div>
+                <div class="chart-sub">Total: {t.total} cases</div>
+                <div class="donut-row" style={{ paddingTop: '10px' }}>
+                  <div style={{ height: '150px', width: '150px', position: 'relative', flex: '0 0 150px' }}>
+                    <canvas ref={el => this.canvasDoughnut = el as HTMLCanvasElement} />
+                  </div>
+                  <div class="donut-legend-col">
+                    <div class="dl-item"><span class="dl-dot" style={{ background: '#900909' }} /><span>High Risk</span><strong>92</strong></div>
+                    <div class="dl-item"><span class="dl-dot" style={{ background: '#FFAA00' }} /><span>Medium Risk</span><strong>312</strong></div>
+                    <div class="dl-item"><span class="dl-dot" style={{ background: '#0B7A5B' }} /><span>Low Risk</span><strong>682</strong></div>
+                  </div>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-title">KYC Pipeline</div>
+                <div class="chart-sub">Stage distribution — {t.total} total</div>
+                <div class="pipeline">
+                  {this.renderPipelineRow('Completed', t.completed, t.total, '#0B7A5B')}
+                  {this.renderPipelineRow('Pending VKYC', 118, t.total, '#B8860B')}
+                  {this.renderPipelineRow('Pending Doc Upload', 124, t.total, '#FFAA00')}
+                  {this.renderPipelineRow('Pending Verification', 86, t.total, '#6D28D9')}
+                  {this.renderPipelineRow('In Progress', 96, t.total, '#3067A6')}
+                  {this.renderPipelineRow('Initiated', 105, t.total, '#ACC2DB')}
+                  {this.renderPipelineRow('Rejected', t.rejected, t.total, '#900909')}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Hierarchy tree — full width */}
-          {this.renderHierarchyTree()}
-        </div>
+            {/* Hierarchy tree */}
+            {this.renderHierarchyTree()}
+          </div>
+        )}
       </div>
     );
   }
