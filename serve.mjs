@@ -36,6 +36,16 @@ http.createServer((req, res) => {
   console.log(`  Customer: /customer`);
   console.log(`  Bank:     /bank`);
   console.log(`  API_URL:  ${API_URL}`);
+  console.log(`  WWW dir:  ${WWW}`);
+  console.log(`  WWW exists: ${fs.existsSync(WWW)}`);
+  console.log(`  index.html exists: ${fs.existsSync(path.join(WWW, 'index.html'))}`);
+  // List build dir
+  const buildDir = path.join(WWW, 'build');
+  if (fs.existsSync(buildDir)) {
+    console.log(`  build/ files: ${fs.readdirSync(buildDir).join(', ')}`);
+  } else {
+    console.log(`  build/ dir MISSING`);
+  }
 });
 
 function serveHtml(res, fp) {
