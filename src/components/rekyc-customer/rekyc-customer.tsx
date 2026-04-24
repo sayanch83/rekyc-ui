@@ -1,7 +1,7 @@
 import { Component, h, State, Prop } from '@stencil/core';
 import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS } from '../../utils/constants';
 
-type Screen = 'whatsapp'|'browser'|'auth_otp'|'landing'|'confirm'|'confirm_otp'
+type Screen = 'whatsapp'|'browser'|'auth_otp'|'landing'|'confirm'|'confirm_otp'|'consent'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
   |'full_intro'|'full_pan'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'
@@ -145,6 +145,7 @@ export class RekycCustomer {
     whatsapp: ['Re-KYC', 'Secure identity verification'], browser: ['Verify Identity', 'Secure portal'],
     auth_otp: ['Authentication', 'Verify identity'], landing: ['Review Details', 'Your current KYC'],
     confirm: ['Self-Declaration', 'Confirm details'], confirm_otp: ['Verify', 'OTP verification'],
+    consent: ['Consent', 'Declaration'],
     minor_choice: ['Update Details', 'What changed?'], addr: ['Update Address', 'New address'],
     mob_access: ['Update Mobile', 'Verify access'], mob_new: ['New Mobile', 'Enter number'],
     mob_otp_old: ['Verify Current', 'Step 1/2'], mob_otp_new: ['Verify New', 'Step 2/2'],
@@ -188,6 +189,9 @@ export class RekycCustomer {
 
   renderScreen() {
     const c = this.cust!;
+    const mobileLast4 = c.mobile.replace(/\D/g,'').slice(-4);
+    const maskedMobile = c.mobile.replace(/\d(?=\d{4})/g, '·');
+
     switch (this.screen) {
 
     case 'whatsapp': return (
@@ -197,17 +201,12 @@ export class RekycCustomer {
           <div class="wa-header"><div class="wa-avatar">NB</div><div><strong>National Bank Official</strong> <span class="verified">✓ Verified</span></div></div>
           <div class="wa-body">
             Hi <strong>{c.name.split(' ')[0]}</strong>! 👋<br/><br/>
-            Great news! You're <strong>pre-approved</strong> for exciting offers, but first we need a quick KYC update 📋<br/><br/>
-            🎁 <strong>Complete now & unlock:</strong><br/>
-            ✅ Pre-approved Personal Loan offer<br/>
-            ✅ ₹500 Shopping Voucher<br/>
-            ✅ Priority banking benefits<br/><br/>
-            ⏰ <strong>Due by:</strong> {c.due}<br/>
-            🔒 Takes just 5 minutes!
+            Your KYC update is due by <strong>{c.due}</strong>. Complete it now to keep your account active and unlock pre-approved offers waiting for you!<br/><br/>
+            🔒 Takes just 5 minutes. Tap below to begin.
           </div>
           <div class="wa-time">9:37 AM ✓✓</div>
         </div>
-        <button class="btn-wa" onClick={() => this.go('browser')}>🔗 Open Re-KYC & Claim Reward</button>
+        <button class="btn-wa" onClick={() => this.go('browser')}>🔗 Open Re-KYC Portal</button>
       </div>
     );
 
@@ -217,14 +216,15 @@ export class RekycCustomer {
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Secure Re-KYC Portal</span></div></div>
         {this.renderOfferTeaser(false)}
         <label class="field-label">Registered Mobile (last 4 digits) *</label>
-        <input class="field-input" type="text" maxLength={4} placeholder="Enter last 4 digits" />
-        <button class="btn-primary" onClick={() => this.go('auth_otp')}>Verify & Proceed</button>
+        <input class="field-input" type="text" inputMode="numeric" maxLength={4} placeholder="Enter last 4 digits" />
+        <div class="hint">Your registered mobile ends in ···{mobileLast4}</div>
+        <button class="btn-primary" onClick={() => this.go('auth_otp')}>Verify &amp; Proceed</button>
       </div>
     );
 
     case 'auth_otp': return (
       <div class="scr tc">
-        <p class="t2">Enter OTP sent to <strong>{c.mobile}</strong></p>
+        <p class="t2">Enter the OTP sent to <strong>{maskedMobile}</strong></p>
         {this.renderOtp('auth')}
         <button class="btn-primary" disabled={!this.otpFilled('auth')} onClick={() => this.go('landing')}>Authenticate</button>
         <button class="btn-text">Resend OTP</button>
@@ -233,31 +233,39 @@ export class RekycCustomer {
 
     case 'landing': return (
       <div class="scr">
-        <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">A/C: {c.acct} • Savings</span></div></div>
-        {this.renderNotice('warn', <span><strong>KYC renewal due by {c.due}.</strong> Update now to unlock your rewards.</span>)}
+        {/* Fix 1: Removed account type — just show Customer ID */}
+        <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Customer ID: {c.acct}</span></div></div>
+        {this.renderNotice('warn', <span><strong>KYC renewal due by {c.due}.</strong> Update now to keep your account active.</span>)}
         {this.renderOfferTeaser(false)}
 
         <h3 class="sec-title">Personal Information</h3>
         <div class="data-card">
-          {[['Full Name', c.name],['Date of Birth', c.dob],['PAN', c.pan],['Aadhaar', c.aadhaar],['Constitution', c.constitution]].map(([l,v]) =>
+          {([['Full Name', c.name],['Date of Birth', c.dob],['PAN', c.pan],['Aadhaar', c.aadhaar],['Constitution', c.constitution]] as [string,string][]).map(([l,v]) =>
             <div class="d-row"><span class="d-lbl">{l}</span><span class="d-val">{v}</span></div>
           )}
         </div>
 
         <h3 class="sec-title">Contact</h3>
         <div class="data-card">
-          <div class="d-row"><span class="d-lbl">Mobile</span><span class="d-val">{c.mobile}</span></div>
+          <div class="d-row"><span class="d-lbl">Mobile</span><span class="d-val">{maskedMobile}</span></div>
           <div class="d-row"><span class="d-lbl">Email</span><span class="d-val">{c.email}</span></div>
         </div>
 
-        <h3 class="sec-title">KYC Documents <span class="badge green">All Valid</span></h3>
-        {c.docsOnFile.map(d =>
-          <div class="doc-row">
-            <div class="doc-icon">📄</div>
-            <div class="doc-info"><div class="doc-name">{d.name}</div><div class="doc-meta">{d.meta}</div></div>
-            <span class="badge green">✓ Valid</span>
-          </div>
-        )}
+        {/* Fix 2/3/4/5: KYC details section overhauled */}
+        <h3 class="sec-title">KYC Details on Record</h3>
+        {c.docsOnFile.map(d => {
+          const expired = !d.valid;
+          return (
+            <div class={{ 'doc-row': true, 'doc-row-expired': expired }}>
+              <div class="doc-icon">📄</div>
+              <div class="doc-info">
+                <div class={{ 'doc-name': true, 'doc-name-expired': expired }}>{d.name}</div>
+                <div class="doc-meta">{d.meta}</div>
+              </div>
+              {expired && <span class="badge red">Expired</span>}
+            </div>
+          );
+        })}
 
         <h3 class="sec-title" style={{ marginTop: '20px' }}>How would you like to proceed?</h3>
         <div class="action-card" onClick={() => this.go('confirm')}>
@@ -272,34 +280,66 @@ export class RekycCustomer {
         </div>
         <div class="action-card" onClick={() => this.go('full_intro')}>
           <div class="ac-icon amber">⚑</div>
-          <div class="ac-body"><div class="ac-title">Full KYC Required</div><div class="ac-desc">Identity/constitution change or document renewal</div><div class="ac-time">⏱ ~10 min</div></div>
+          {/* Fix 7: Renamed action card */}
+          <div class="ac-body"><div class="ac-title">Name / Constitution Change or Document Expired</div><div class="ac-desc">Identity details changed or a document needs renewal</div><div class="ac-time">⏱ ~10 min</div></div>
           <div class="ac-arrow">›</div>
         </div>
       </div>
     );
 
-    // ── FLOW A: Self-Declaration ──
+    // Fix 8: confirm screen — only digital signature, no consents
     case 'confirm': return (
       <div class="scr">
         {this.renderNotice('ok', 'You are confirming that all KYC details on record are correct and up-to-date.')}
         {this.renderOfferTeaser(false)}
-        <h3 class="sec-title">Self-Declaration</h3>
-        {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false, <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>))}
-        <label class="field-label" style={{ marginTop: '12px' }}>Digital Signature (Type full name)</label>
+        <h3 class="sec-title">Digital Signature</h3>
+        <p class="t2" style={{ marginBottom: '10px' }}>Type your full name below as your digital signature.</p>
+        <label class="field-label">Full Name *</label>
         <input class="field-input" type="text" placeholder={`Enter: ${c.name}`} value={this.sigText} onInput={(e:any) => this.sigText = e.target.value} />
-        <div class="hint">Must match registered name exactly</div>
-        <button class="btn-accent" disabled={!(this.consents.c0 && this.consents.c1 && this.consents.c2 && this.sigText.trim().length > 3)} onClick={() => this.go('confirm_otp')}>✓ Submit Declaration</button>
-      </div>
-    );
-    case 'confirm_otp': return (
-      <div class="scr tc">
-        <p class="t2">Enter OTP sent to <strong>{c.mobile}</strong></p>
-        {this.renderOtp('cotp')}
-        <button class="btn-primary" disabled={!this.otpFilled('cotp')} onClick={() => this.completeKyc('Self-Declaration')}>Verify & Submit</button>
+        <div class="hint">Must match your registered name exactly</div>
+        <button class="btn-accent" disabled={this.sigText.trim().length < 4} onClick={() => this.go('confirm_otp')}>Continue to OTP Verification</button>
       </div>
     );
 
-    // ── FLOW B: Minor Update ──
+    case 'confirm_otp': return (
+      <div class="scr tc">
+        <p class="t2">Enter OTP sent to <strong>{maskedMobile}</strong></p>
+        {this.renderOtp('cotp')}
+        {/* Fix 8: After OTP verified → go to consent screen */}
+        <button class="btn-primary" disabled={!this.otpFilled('cotp')} onClick={() => this.go('consent')}>Verify OTP</button>
+        <button class="btn-text">Resend OTP</button>
+      </div>
+    );
+
+    // Fix 8: New consent screen — after OTP, before final submit
+    case 'consent': return (
+      <div class="scr">
+        <h3 class="sec-title">Consent &amp; Declaration</h3>
+        <p class="t2" style={{ marginBottom: '12px' }}>Please read and accept the following declarations before submitting.</p>
+
+        <div class="select-all-row" onClick={() => {
+          const allOn = !!(this.consents.c0 && this.consents.c1 && this.consents.c2);
+          this.consents = { ...this.consents, c0: !allOn, c1: !allOn, c2: !allOn };
+        }}>
+          <div class={{ 'chk-box': true, checked: !!(this.consents.c0 && this.consents.c1 && this.consents.c2) }}>
+            {this.consents.c0 && this.consents.c1 && this.consents.c2 &&
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </div>
+          <span class="select-all-label">Select All</span>
+        </div>
+
+        {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false,
+          <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>
+        ))}
+
+        <button class="btn-accent" style={{ marginTop: '16px' }}
+          disabled={!(this.consents.c0 && this.consents.c1 && this.consents.c2)}
+          onClick={() => this.completeKyc('Self-Declaration')}>
+          ✓ Submit Declaration
+        </button>
+      </div>
+    );
+
     case 'minor_choice': return (
       <div class="scr">
         <h3 class="sec-title">What would you like to update?</h3>
@@ -323,33 +363,33 @@ export class RekycCustomer {
     case 'mob_access': return (
       <div class="scr">
         <h3 class="sec-title">Mobile Number Update</h3>
-        {this.renderNotice('info', <span>Current registered mobile: <strong>{c.mobile}</strong></span>)}
+        {this.renderNotice('info', <span>Current registered mobile: <strong>{maskedMobile}</strong></span>)}
         <h3 class="sec-title">Do you have access to your current number?</h3>
         {this.renderRadio(this.accessOpt === 'yes', 'Yes, I can receive OTP', 'Verify via OTP on both numbers', () => this.accessOpt = 'yes')}
-        {this.renderRadio(this.accessOpt === 'no', 'No, I don\'t have access', 'Alternate verification required', () => this.accessOpt = 'no')}
+        {this.renderRadio(this.accessOpt === 'no', "No, I don't have access", 'Alternate verification required', () => this.accessOpt = 'no')}
         <button class="btn-primary" disabled={!this.accessOpt} onClick={() => this.go(this.accessOpt === 'yes' ? 'mob_new' : 'mob_no_access')}>Continue</button>
       </div>
     );
     case 'mob_new': return (
       <div class="scr">
         <h3 class="sec-title">Enter New Mobile Number</h3>
-        <label class="field-label">Current Mobile</label><input class="field-input readonly" value={c.mobile} readOnly />
+        <label class="field-label">Current Mobile</label><input class="field-input readonly" value={maskedMobile} readOnly />
         <label class="field-label">New Mobile Number *</label><input class="field-input" placeholder="Enter 10-digit number" maxLength={10} />
         <button class="btn-primary" onClick={() => this.go('mob_otp_old')}>Send OTP to Current Number</button>
       </div>
     );
     case 'mob_otp_old': return (
       <div class="scr tc">
-        <p class="t2">Enter OTP sent to <strong>current number</strong></p>
+        <p class="t2">Enter OTP sent to <strong>{maskedMobile}</strong></p>
         {this.renderOtp('mold')}
-        <button class="btn-primary" disabled={!this.otpFilled('mold')} onClick={() => this.go('mob_otp_new')}>Verify & Continue</button>
+        <button class="btn-primary" disabled={!this.otpFilled('mold')} onClick={() => this.go('mob_otp_new')}>Verify &amp; Continue</button>
       </div>
     );
     case 'mob_otp_new': return (
       <div class="scr tc">
         <p class="t2">Enter OTP sent to <strong>new number</strong></p>
         {this.renderOtp('mnew')}
-        <button class="btn-accent" disabled={!this.otpFilled('mnew')} onClick={() => this.completeKyc('Partial Update')}>Verify & Update</button>
+        <button class="btn-accent" disabled={!this.otpFilled('mnew')} onClick={() => this.completeKyc('Partial Update')}>Verify &amp; Update</button>
       </div>
     );
     case 'mob_no_access': return (
@@ -357,7 +397,7 @@ export class RekycCustomer {
         {this.renderNotice('warn', <span>Digital update is only available for <strong>postpaid connections</strong>.</span>)}
         <label class="field-label">New Mobile Number *</label><input class="field-input" placeholder="10-digit number" maxLength={10} />
         <h3 class="sec-title">Is your new number postpaid?</h3>
-        {this.renderRadio(this.postpaidOpt === 'yes', 'Yes, it\'s postpaid', 'Upload bill for verification', () => this.postpaidOpt = 'yes')}
+        {this.renderRadio(this.postpaidOpt === 'yes', "Yes, it's postpaid", 'Upload bill for verification', () => this.postpaidOpt = 'yes')}
         {this.renderRadio(this.postpaidOpt === 'no', 'No / Not sure', 'Branch visit required', () => this.postpaidOpt = 'no')}
         <button class="btn-primary" disabled={!this.postpaidOpt} onClick={() => this.go(this.postpaidOpt === 'yes' ? 'mob_postpaid' : 'branch')}>Continue</button>
       </div>
@@ -367,7 +407,6 @@ export class RekycCustomer {
         <h3 class="sec-title">Upload Postpaid Bill</h3>
         {this.renderNotice('info', <span>Upload a <strong>postpaid bill ≤ 3 months old</strong> showing your name and number.</span>)}
         {this.renderUpload('bill', 'Upload postpaid bill', 'Postpaid Mobile Bill')}
-        {this.renderChk('bill_consent', false, 'I confirm the uploaded bill is genuine and the number belongs to me.')}
         <button class="btn-primary" onClick={() => this.go('mob_postpaid_otp')}>Verify via OTP</button>
       </div>
     );
@@ -375,7 +414,7 @@ export class RekycCustomer {
       <div class="scr tc">
         <p class="t2">Enter OTP sent to <strong>new postpaid number</strong></p>
         {this.renderOtp('ppot')}
-        <button class="btn-accent" disabled={!this.otpFilled('ppot')} onClick={() => this.completeKyc('Partial Update')}>Verify & Update</button>
+        <button class="btn-accent" disabled={!this.otpFilled('ppot')} onClick={() => this.completeKyc('Partial Update')}>Verify &amp; Update</button>
       </div>
     );
     case 'branch': return (
@@ -392,12 +431,11 @@ export class RekycCustomer {
       </div>
     );
 
-    // ── FLOW C: Full KYC ──
     case 'full_intro': return (
       <div class="scr">
-        {this.renderNotice('info', <strong>Full KYC verification is required. Complete all steps below.</strong>)}
+        {this.renderNotice('info', <strong>Please complete all steps below to update your KYC.</strong>)}
         {this.renderOfferTeaser(false)}
-        <h3 class="sec-title">Reason for Full KYC</h3>
+        <h3 class="sec-title">Reason for Re-KYC</h3>
         <div class="hint" style={{ marginBottom: '8px' }}>Select all that apply.</div>
         {KYC_REASONS.map(r => this.renderChk(`r_${r.key}`, false, <div><div class="chk-label">{r.label}</div><div class="chk-sub">{r.sub}</div></div>))}
         <h3 class="sec-title">Steps to Complete</h3>
@@ -409,48 +447,68 @@ export class RekycCustomer {
         <button class="btn-primary" onClick={() => this.go('full_pan')}>Begin Verification</button>
       </div>
     );
+
+    // Fix 9: Added DOB field
     case 'full_pan': return (
       <div class="scr">
         <h3 class="sec-title">Step 1: PAN Verification</h3>
-        <label class="field-label">PAN Number *</label><input class="field-input" placeholder="ABCPS1234K" maxLength={10} style={{ textTransform: 'uppercase' }} />
-        <label class="field-label">Full Name (as on PAN) *</label><input class="field-input" placeholder="Enter full name" />
+        <label class="field-label">PAN Number *</label>
+        <input class="field-input" placeholder="ABCPS1234K" maxLength={10} style={{ textTransform: 'uppercase' }} />
+        <label class="field-label">Full Name (as on PAN) *</label>
+        <input class="field-input" placeholder="Enter name exactly as printed on PAN" />
+        <label class="field-label">Date of Birth (as per PAN) *</label>
+        <input class="field-input" type="date" />
+        <div class="hint">DOB must match exactly as printed on your PAN card</div>
         <button class="btn-primary" onClick={() => this.go('full_aadhaar')}>Verify PAN</button>
       </div>
     );
+
+    // Fix 10: Aadhaar number input shown when OTP method selected; consent removed from here
     case 'full_aadhaar': return (
       <div class="scr">
         <h3 class="sec-title">Step 2: Aadhaar Validation</h3>
-        {this.renderNotice('info', 'Choose verification method. DigiLocker provides instant paperless verification.')}
-        {this.renderRadio(this.aadhaarMethod === 'digilocker', '🔐 DigiLocker Fetch (Recommended)', 'Instant paperless verification', () => this.aadhaarMethod = 'digilocker')}
-        {this.renderRadio(this.aadhaarMethod === 'otp', 'Aadhaar OTP (eKYC)', 'OTP to Aadhaar-linked mobile', () => this.aadhaarMethod = 'otp')}
-        {this.renderChk('aadh_consent', false, 'I authorise identity verification with UIDAI / DigiLocker.')}
-        <button class="btn-primary" disabled={!this.aadhaarMethod || !this.consents.aadh_consent} onClick={() => this.go(this.aadhaarMethod === 'digilocker' ? 'digilocker' : 'full_aadhaar_otp')}>
-          {this.aadhaarMethod === 'digilocker' ? '🔐 Open DigiLocker' : 'Send Aadhaar OTP'}
+        {this.renderNotice('info', 'Choose your preferred verification method.')}
+        {this.renderRadio(this.aadhaarMethod === 'digilocker', 'DigiLocker Fetch (Recommended)', 'Instant paperless verification — no OTP needed', () => this.aadhaarMethod = 'digilocker')}
+        {this.renderRadio(this.aadhaarMethod === 'otp', 'Aadhaar OTP (eKYC)', 'OTP sent to your Aadhaar-linked mobile', () => this.aadhaarMethod = 'otp')}
+        {this.aadhaarMethod === 'otp' && (
+          <div>
+            <label class="field-label" style={{ marginTop: '12px' }}>Aadhaar Number *</label>
+            <input class="field-input" placeholder="XXXX  XXXX  XXXX" maxLength={14} inputMode="numeric" />
+            <div class="hint">Enter your 12-digit Aadhaar number</div>
+          </div>
+        )}
+        <button class="btn-primary" style={{ marginTop: '12px' }} disabled={!this.aadhaarMethod}
+          onClick={() => this.go(this.aadhaarMethod === 'digilocker' ? 'digilocker' : 'full_aadhaar_otp')}>
+          {this.aadhaarMethod === 'digilocker' ? 'Open DigiLocker' : 'Send Aadhaar OTP'}
         </button>
       </div>
     );
+
     case 'digilocker': return (
       <div class="scr tc">
         <div class="digi-icon">🔐</div>
         <h2>DigiLocker</h2>
-        <p class="t2">You will be redirected to DigiLocker to fetch your Aadhaar details.</p>
+        <p class="t2">You will be redirected to DigiLocker to fetch your Aadhaar details securely.</p>
         <div class="digi-features">
-          {['Instant Aadhaar fetch', 'No physical document needed', 'Govt. verified & tamper-proof', 'Data shared with your consent only'].map(t =>
+          {['Instant Aadhaar fetch', 'No physical document needed', 'Govt. verified and tamper-proof', 'Data shared with your consent only'].map(t =>
             <div class="digi-item">✓ {t}</div>
           )}
         </div>
         <button class="btn-primary" onClick={() => this.go('full_doc')}>Continue to DigiLocker →</button>
-        <div class="hint tc">Simulated: In production, opens DigiLocker SSO</div>
+        <div class="hint tc">Simulated — in production, opens DigiLocker SSO</div>
       </div>
     );
+
     case 'full_aadhaar_otp': return (
       <div class="scr tc">
-        <h3 class="sec-title">Aadhaar OTP</h3>
-        <p class="t2">Enter OTP sent to <strong>Aadhaar-linked mobile</strong></p>
+        <h3 class="sec-title">Aadhaar OTP Verification</h3>
+        <p class="t2">An OTP has been sent to the mobile number linked with your Aadhaar</p>
         {this.renderOtp('adho')}
         <button class="btn-primary" disabled={!this.otpFilled('adho')} onClick={() => this.go('full_doc')}>Verify Aadhaar</button>
+        <button class="btn-text">Resend OTP</button>
       </div>
     );
+
     case 'full_doc': return (
       <div class="scr">
         <h3 class="sec-title">Step 3: Upload Identity Document</h3>
@@ -465,14 +523,39 @@ export class RekycCustomer {
         <button class="btn-primary" onClick={() => this.go('full_vkyc')}>Continue to Video KYC</button>
       </div>
     );
+
+    // Fix 11: VKYC redesigned — link-based, not camera-first
     case 'full_vkyc': return (
       <div class="scr">
-        <h3 class="sec-title">Step 4: Video KYC</h3>
-        {this.renderNotice('info', <span>A bank representative will verify your identity via video call. Keep <strong>original documents</strong> ready.</span>)}
-        {this.renderOfferTeaser(false)}
-        <button class="btn-accent" onClick={() => this.go('full_vkyc_live')}>📹 Start Video KYC</button>
+        <div class="vkyc-success-icon">✓</div>
+        <h2 class="vkyc-done-title">Details Updated Successfully!</h2>
+        <p class="t2 tc" style={{ marginBottom: '16px' }}>Your PAN, Aadhaar and documents have been verified. Complete Video KYC to finalise the process.</p>
+
+        <div class="vkyc-link-card">
+          <div class="vkyc-link-label">Your VKYC Session Link</div>
+          <div class="vkyc-link-url">https://vkyc.nationalbank.co.in/s/KYC2026{c.acct.slice(-4)}</div>
+          <button class="btn-accent" style={{ marginTop: '12px' }} onClick={() => this.go('full_vkyc_live')}>
+            Start Video KYC Now
+          </button>
+        </div>
+
+        <div class="vkyc-later-notice">
+          <div class="vkyc-later-icon">📲</div>
+          <div class="vkyc-later-text">
+            <strong>Prefer to complete later?</strong><br/>
+            This link has been sent to <strong>{maskedMobile}</strong> and your registered email. Valid for <strong>3 days</strong>.
+          </div>
+        </div>
+
+        <div class="vkyc-steps-note">
+          <div class="vkyc-step-row">✓ <span>PAN verified</span></div>
+          <div class="vkyc-step-row">✓ <span>Aadhaar validated</span></div>
+          <div class="vkyc-step-row">✓ <span>Documents uploaded</span></div>
+          <div class="vkyc-step-row pending">◉ <span>Video KYC — Pending</span></div>
+        </div>
       </div>
     );
+
     case 'full_vkyc_live': return (
       <div class="scr">
         <div class="vkyc-cam"><div class="face-oval" /><div class="vkyc-text">Position your face in frame</div></div>
@@ -481,7 +564,6 @@ export class RekycCustomer {
       </div>
     );
 
-    // ── SUCCESS ──
     case 'success': return (
       <div class="scr tc">
         <div class="suc-icon">✓</div>
@@ -489,7 +571,7 @@ export class RekycCustomer {
         <p class="t2">Your account services continue uninterrupted.</p>
         {this.renderOfferTeaser(true)}
         <div class="ref-card"><div class="ref-label">REFERENCE NUMBER</div><div class="ref-value">KYC-2026-{c.acct.slice(-4)}</div></div>
-        <button class="btn-primary" onClick={() => this.reset()}>🏠 Back to Home</button>
+        <button class="btn-primary" onClick={() => this.reset()}>Back to Home</button>
       </div>
     );
 
