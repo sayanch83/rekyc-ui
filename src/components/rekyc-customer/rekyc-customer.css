@@ -183,3 +183,52 @@ select.field-input{appearance:none;cursor:pointer}
 .vkyc-step-row span{color:var(--txt)}
 .vkyc-step-row.pending{color:var(--warn)}
 .vkyc-step-row.pending span{color:var(--t2)}
+
+/* ── OTP enhancements ── */
+.otp-box.otp-error{border-color:var(--dng) !important;background:var(--dng-bg)}
+.otp-footer{display:flex;justify-content:space-between;align-items:center;margin:6px 0 4px}
+.resend-timer{font-size:12px;color:var(--t2);font-weight:600}
+.lockout-card{background:var(--dng-bg);border-radius:10px;padding:16px;text-align:center;font-size:13px;color:var(--dng);margin:12px 0;line-height:1.5;border:1px solid rgba(144,9,9,.15)}
+.field-error{color:var(--dng);font-size:12px;margin:4px 0 6px;display:flex;align-items:center;gap:4px}
+.field-err{border-color:var(--dng) !important;background:var(--dng-bg)}
+
+/* ── Session warning ── */
+.session-warn{background:var(--warn-bg);border-bottom:1px solid rgba(255,170,0,.2);padding:8px 20px;font-size:12.5px;color:#7A5400;display:flex;align-items:center;font-weight:600;flex-shrink:0}
+
+/* ── Document expiry ── */
+.doc-row-warn{border:1px solid rgba(255,170,0,.35) !important;background:rgba(255,248,230,.4)}
+.doc-expiry-chip{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:600;padding:1px 8px;border-radius:20px;background:var(--acc-s);color:var(--acc)}
+.doc-expiry-chip.expiring-soon{background:var(--warn-bg);color:#7A5400}
+.badge.amber{background:var(--warn-bg);color:#7A5400}
+
+/* ── Upload preview ── */
+.upload-preview{width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-bottom:6px}
+
+/* ── PAN result screen ── */
+.verify-result{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:10px;margin-bottom:4px}
+.verify-result.ok{background:var(--acc-s);border:1px solid rgba(11,122,91,.15)}
+.verify-result.fail{background:var(--dng-bg);border:1px solid rgba(144,9,9,.15)}
+.vr-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
+.verify-result.ok .vr-icon{background:var(--acc);color:#fff}
+.verify-result.fail .vr-icon{background:var(--dng);color:#fff}
+.vr-title{font-size:14px;font-weight:700;color:var(--txt)}
+.vr-sub{font-size:12px;color:var(--t2);margin-top:2px}
+
+/* ── Rejection card ── */
+.rejection-card{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--dng-bg);border:1px solid rgba(144,9,9,.2);border-radius:10px;cursor:pointer;margin:6px 0;transition:all .15s}
+.rejection-card:hover{background:#fbd9d9}
+.rej-icon{width:30px;height:30px;border-radius:50%;background:var(--dng);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.rej-body{flex:1}
+.rej-title{font-size:13px;font-weight:700;color:var(--dng)}
+.rej-reason{font-size:11.5px;color:var(--t2);margin-top:2px}
+.rej-arrow{font-size:12px;font-weight:700;color:var(--dng);white-space:nowrap}
+
+/* ── Re-submit screen ── */
+.rejection-detail{background:var(--dng-bg);border-radius:8px;padding:12px;margin-bottom:12px}
+.rd-label{font-size:10px;font-weight:700;color:var(--dng);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.rd-reason{font-size:12.5px;color:var(--txt);line-height:1.5}
+
+/* ── Upload spinner ── */
+.upload-overlay{display:flex;align-items:center;gap:10px;justify-content:center}
+.upload-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
