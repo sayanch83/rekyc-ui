@@ -10,6 +10,8 @@ export class RekycBank {
   @State() rejectReason = '';
   @State() toast: string | null = null;
   @State() viewingFile: string | null = null;
+  @State() loading = true;
+  @State() apiError: string | null = null;
   private interval: any;
 
   async componentWillLoad() { await this.load(); }
@@ -17,10 +19,21 @@ export class RekycBank {
   disconnectedCallback() { clearInterval(this.interval); }
 
   async load() {
-    this.customers = await fetchCustomers();
-    if (this.selected) {
-      const fresh = await fetchCustomer(this.selected.id);
-      this.selected = fresh;
+    try {
+      const result = await fetchCustomers();
+      if (!Array.isArray(result)) throw new Error('Invalid response from API');
+      this.customers = result;
+      this.apiError = null;
+      if (this.selected) {
+        const fresh = await fetchCustomer(this.selected.id);
+        this.selected = fresh;
+      }
+    } catch (e: any) {
+      console.error('API load error:', e);
+      this.apiError = e.message || 'Failed to connect to API';
+      this.customers = [];
+    } finally {
+      this.loading = false;
     }
   }
 
@@ -68,6 +81,26 @@ export class RekycBank {
   }
 
   render() {
+    // Show loading state
+    if (this.loading) {
+      return <div class="dash-loading"><div class="logo">NB</div><div>Loading Re-KYC Dashboard...</div></div>;
+    }
+
+    // Show API error with helpful message
+    if (this.apiError) {
+      return (
+        <div class="dash-loading">
+          <div class="logo">NB</div>
+          <div class="api-error">
+            <div>⚠ Cannot connect to API</div>
+            <code>{(window as any).__REKYC_API__ || 'API URL not set'}</code>
+            <div>{this.apiError}</div>
+            <button onClick={() => this.load()}>Retry</button>
+          </div>
+        </div>
+      );
+    }
+
     const d = this.selected;
     const stats = [
       { label: 'Total', val: this.customers.length, color: 'var(--pri)' },

@@ -25,7 +25,12 @@ export class RekycCustomer {
   @State() uploadedDocs: Record<string, { name: string; fileName: string }> = {};
 
   async componentWillLoad() {
-    this.cust = await fetchCustomer(this.customerId);
+    try {
+      this.cust = await fetchCustomer(this.customerId);
+    } catch (e) {
+      console.error('Failed to load customer:', e);
+      // Will show loading state - customer stays null
+    }
   }
 
   go(s: Screen) { this.hist = [...this.hist, s]; this.screen = s; }
