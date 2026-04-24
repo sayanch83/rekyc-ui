@@ -17,18 +17,19 @@ const MIME = {
 http.createServer((req, res) => {
   let url = req.url.split('?')[0];
 
-  if (url === '/bank' || url === '/bank/') {
-    return serveHtml(res, path.join(WWW, 'pages', 'bank.html'));
-  }
-  if (url === '/' || url === '/customer' || url === '/customer/') {
+  // All HTML routes serve index.html - rekyc-app router handles /bank vs /customer
+  if (url === '/' || url === '/customer' || url === '/customer/' ||
+      url === '/bank' || url === '/bank/') {
     return serveHtml(res, path.join(WWW, 'index.html'));
   }
 
+  // Static files
   const fp = path.join(WWW, url);
   if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
     return serveStatic(res, fp);
   }
 
+  // Fallback to index.html for SPA
   serveHtml(res, path.join(WWW, 'index.html'));
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`Re-KYC Frontend → port ${PORT}`);
@@ -40,10 +41,28 @@ http.createServer((req, res) => {
 function serveHtml(res, fp) {
   try {
     let html = fs.readFileSync(fp, 'utf-8');
+
+    // Replace API URL placeholder
     html = html.replace(/%%API_URL%%/g, API_URL);
+
+    // Dynamically find the hashed CSS file Stencil generated
+    const buildDir = path.join(WWW, 'build');
+    const buildFiles = fs.readdirSync(buildDir);
+    const hashedCss = buildFiles.find(f => f.startsWith('p-') && f.endsWith('.css'));
+
+    // Inject Stencil assets before </head> if not already present
+    if (!html.includes('rekyc.esm.js')) {
+      const cssLink = hashedCss ? `<link rel="stylesheet" href="/build/${hashedCss}">` : '';
+      const inject = `${cssLink}
+  <script type="module" src="/build/rekyc.esm.js"></script>
+  <script nomodule src="/build/rekyc.js"></script>`;
+      html = html.replace('</head>', `  ${inject}\n</head>`);
+    }
+
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(html);
-  } catch {
+  } catch (e) {
+    console.error('serveHtml error:', e.message);
     res.writeHead(404); res.end('Not Found');
   }
 }
