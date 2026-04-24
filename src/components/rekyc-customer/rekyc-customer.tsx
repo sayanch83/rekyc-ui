@@ -1,7 +1,7 @@
 import { Component, h, State, Prop } from '@stencil/core';
 import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS } from '../../utils/constants';
 
-type Screen = 'whatsapp'|'browser'|'auth_otp'|'landing'|'confirm'|'confirm_otp'|'consent'
+type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
   |'full_intro'|'full_pan'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'
@@ -17,6 +17,7 @@ export class RekycCustomer {
   @State() consents: Record<string, boolean> = {};
   @State() otpVals: Record<string, string[]> = {};
   @State() sigText = '';
+  @State() mobileEntry = '';   // what user typed on browser screen
   @State() minorOpt: string | null = null;
   @State() accessOpt: string | null = null;
   @State() postpaidOpt: string | null = null;
@@ -25,32 +26,25 @@ export class RekycCustomer {
   @State() uploadedDocs: Record<string, { name: string; fileName: string }> = {};
 
   async componentWillLoad() {
-    try {
-      this.cust = await fetchCustomer(this.customerId);
-    } catch (e) {
-      console.error('Failed to load customer:', e);
-      // Will show loading state - customer stays null
-    }
+    try { this.cust = await fetchCustomer(this.customerId); }
+    catch (e) { console.error('Failed to load customer:', e); }
   }
 
   go(s: Screen) { this.hist = [...this.hist, s]; this.screen = s; }
   back() { if (this.hist.length > 1) { const h = this.hist.slice(0,-1); this.hist = h; this.screen = h[h.length-1]; } }
-  reset() { this.screen = 'whatsapp'; this.hist = ['whatsapp']; }
+  reset() { this.screen = 'whatsapp'; this.hist = ['whatsapp']; this.consents = {}; this.otpVals = {}; this.sigText = ''; this.mobileEntry = ''; }
 
   tgl(k: string) { this.consents = { ...this.consents, [k]: !this.consents[k] }; }
+  allConsented() { return !!(this.consents.c0 && this.consents.c1 && this.consents.c2); }
+  toggleAll() { const on = this.allConsented(); this.consents = { ...this.consents, c0: !on, c1: !on, c2: !on }; }
 
-  otpFilled(prefix: string) {
-    return (this.otpVals[prefix] || []).filter(Boolean).length === 6;
-  }
+  otpFilled(prefix: string) { return (this.otpVals[prefix] || []).filter(Boolean).length === 6; }
 
   handleOtp(prefix: string, idx: number, val: string) {
     const arr = [...(this.otpVals[prefix] || Array(6).fill(''))];
     arr[idx] = val.replace(/\D/g, '').slice(-1);
     this.otpVals = { ...this.otpVals, [prefix]: arr };
-    if (val && idx < 5) {
-      const next = document.getElementById(`${prefix}-${idx+1}`) as HTMLInputElement;
-      next?.focus();
-    }
+    if (val && idx < 5) (document.getElementById(`${prefix}-${idx+1}`) as HTMLInputElement)?.focus();
   }
 
   async doUpload(slot: string, docName: string, file: File) {
@@ -62,7 +56,19 @@ export class RekycCustomer {
   }
 
   async completeKyc(kycType: string) {
-    await updateCustomer(this.customerId, { status: 'completed', kycType, source: 'Digital', completedDate: new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) });
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    // Determine status based on journey type
+    const newStatus = kycType === 'Full KYC' ? 'Pending VKYC' : 'Completed';
+    await updateCustomer(this.customerId, {
+      status: newStatus,
+      kycType,
+      source: 'Digital',
+      completedDate: today,
+      linkActive: false,
+      reminders: [...(this.cust?.reminders || []), { ch: 'System', date: today, status: 'KYC submitted via digital portal' }],
+    } as any);
+    // Refresh customer data so bank dashboard sees updated state
+    try { this.cust = await fetchCustomer(this.customerId); } catch(e) {}
     this.go('success');
   }
 
@@ -72,16 +78,10 @@ export class RekycCustomer {
     return (
       <div class="otp-row">
         {vals.map((v, i) => (
-          <input
-            id={`${prefix}-${i}`}
-            type="password"
-            inputMode="numeric"
-            maxLength={1}
-            value={v}
+          <input id={`${prefix}-${i}`} type="password" inputMode="numeric" maxLength={1} value={v}
             class={{ 'otp-box': true, filled: !!v }}
             onInput={(e: any) => this.handleOtp(prefix, i, e.target.value)}
-            onKeyDown={(e: any) => { if (e.key === 'Backspace' && !v && i > 0) (document.getElementById(`${prefix}-${i-1}`) as HTMLInputElement)?.focus(); }}
-          />
+            onKeyDown={(e: any) => { if (e.key === 'Backspace' && !v && i > 0) (document.getElementById(`${prefix}-${i-1}`) as HTMLInputElement)?.focus(); }} />
         ))}
       </div>
     );
@@ -98,8 +98,7 @@ export class RekycCustomer {
         </div>
         {done
           ? [<div class="up-name">✓ {this.uploadedDocs[slot].fileName}</div>, <div class="up-hint">Uploaded • Tap to replace</div>]
-          : [<div class="up-text">{label}</div>, <div class="up-hint">JPG, PNG or PDF • Max 10MB</div>]
-        }
+          : [<div class="up-text">{label}</div>, <div class="up-hint">JPG, PNG or PDF • Max 10MB</div>]}
       </label>
     );
   }
@@ -133,42 +132,52 @@ export class RekycCustomer {
         <div class="offer-icon">{revealed ? '🎁' : '🎉'}</div>
         <div class="offer-text">
           {revealed
-            ? [<div class="offer-title gold">Congratulations! Your Reward</div>, <div class="offer-value">₹500 Amazon Voucher + Pre-approved Loan!</div>]
-            : [<div class="offer-title">Complete KYC to Unlock</div>, <div class="offer-sub">A pre-approved offer & shopping voucher awaits you!</div>]
-          }
+            ? [<div class="offer-title gold">KYC Submitted!</div>,
+               <div class="offer-value">Your reward will be credited once your KYC is verified and approved by the bank.</div>]
+            : [<div class="offer-title">Complete KYC to Unlock</div>,
+               <div class="offer-sub">A pre-approved offer & shopping voucher awaits you!</div>]}
         </div>
       </div>
     );
   }
 
   titles: Record<string, [string, string]> = {
-    whatsapp: ['Re-KYC', 'Secure identity verification'], browser: ['Verify Identity', 'Secure portal'],
-    auth_otp: ['Authentication', 'Verify identity'], landing: ['Review Details', 'Your current KYC'],
-    confirm: ['Self-Declaration', 'Confirm details'], confirm_otp: ['Verify', 'OTP verification'],
-    consent: ['Consent', 'Declaration'],
-    minor_choice: ['Update Details', 'What changed?'], addr: ['Update Address', 'New address'],
-    mob_access: ['Update Mobile', 'Verify access'], mob_new: ['New Mobile', 'Enter number'],
-    mob_otp_old: ['Verify Current', 'Step 1/2'], mob_otp_new: ['Verify New', 'Step 2/2'],
-    mob_no_access: ['Verification', 'Additional check'], mob_postpaid: ['Upload Bill', 'Postpaid verify'],
-    mob_postpaid_otp: ['Verify Number', 'OTP check'], branch: ['Branch Visit', 'In-person required'],
-    full_intro: ['Full KYC', 'Complete verification'], full_pan: ['PAN', 'Step 1/4'],
-    full_aadhaar: ['Aadhaar', 'Step 2/4'], full_aadhaar_otp: ['Aadhaar OTP', 'Step 2/4'],
-    digilocker: ['DigiLocker', 'Aadhaar fetch'], full_doc: ['Documents', 'Step 3/4'],
-    full_vkyc: ['Video KYC', 'Step 4/4'], full_vkyc_live: ['VKYC Live', 'In progress'],
-    success: ['Done', 'KYC Updated'],
+    whatsapp: ['Re-KYC', 'Secure identity verification'],
+    browser: ['Verify Identity', 'Secure portal'],
+    auth_otp: ['Authentication', 'Verify identity'],
+    consent: ['Consent', 'Before we begin'],
+    landing: ['Review Details', 'Your current KYC'],
+    confirm: ['Self-Declaration', 'Confirm details'],
+    minor_choice: ['Update Details', 'What changed?'],
+    addr: ['Update Address', 'New address'],
+    mob_access: ['Update Mobile', 'Verify access'],
+    mob_new: ['New Mobile', 'Enter number'],
+    mob_otp_old: ['Verify Current', 'Step 1/2'],
+    mob_otp_new: ['Verify New', 'Step 2/2'],
+    mob_no_access: ['Verification', 'Additional check'],
+    mob_postpaid: ['Upload Bill', 'Postpaid verify'],
+    mob_postpaid_otp: ['Verify Number', 'OTP check'],
+    branch: ['Branch Visit', 'In-person required'],
+    full_intro: ['Full KYC', 'Complete verification'],
+    full_pan: ['PAN', 'Step 1/4'],
+    full_aadhaar: ['Aadhaar', 'Step 2/4'],
+    full_aadhaar_otp: ['Aadhaar OTP', 'Step 2/4'],
+    digilocker: ['DigiLocker', 'Aadhaar fetch'],
+    full_doc: ['Documents', 'Step 3/4'],
+    full_vkyc: ['Video KYC', 'Step 4/4'],
+    full_vkyc_live: ['VKYC Live', 'In progress'],
+    success: ['Done', 'KYC Submitted'],
   };
 
   render() {
     if (!this.cust) return <div class="loading">Loading...</div>;
     const [t1, t2] = this.titles[this.screen] || ['Re-KYC', ''];
-    const noBack = ['whatsapp', 'success', 'branch'];
+    const noBack = ['whatsapp', 'success', 'branch', 'consent'];
 
     return (
       <div class="phone-wrap">
         <div class="phone">
-          {/* Status bar */}
           <div class="status-bar"><span>9:41</span><span>⦿ ▮▮▮ 🔋</span></div>
-          {/* Header */}
           <div class="hdr">
             {!noBack.includes(this.screen) && (
               <button class="hdr-back" onClick={() => this.back()}>
@@ -177,10 +186,7 @@ export class RekycCustomer {
             )}
             <div><h1>{t1}</h1><p>{t2}</p></div>
           </div>
-          {/* Body */}
-          <div class="body">
-            {this.renderScreen()}
-          </div>
+          <div class="body">{this.renderScreen()}</div>
           {this.uploading && <div class="upload-overlay">Uploading...</div>}
         </div>
       </div>
@@ -189,11 +195,14 @@ export class RekycCustomer {
 
   renderScreen() {
     const c = this.cust!;
-    const mobileLast4 = c.mobile.replace(/\D/g,'').slice(-4);
-    const maskedMobile = c.mobile.replace(/\d(?=\d{4})/g, '·');
+    // Fix 3: derive last4 consistently from the API mobile field
+    const last4 = c.mobile.replace(/\D/g, '').slice(-4);
+    // Mask: show first part hidden, last 4 visible
+    const maskedMobile = `+91 XXXXX X${last4}`;
 
     switch (this.screen) {
 
+    // ── WhatsApp notification ──
     case 'whatsapp': return (
       <div class="scr">
         <p class="intro">You received a message from <strong>National Bank</strong>.</p>
@@ -201,8 +210,8 @@ export class RekycCustomer {
           <div class="wa-header"><div class="wa-avatar">NB</div><div><strong>National Bank Official</strong> <span class="verified">✓ Verified</span></div></div>
           <div class="wa-body">
             Hi <strong>{c.name.split(' ')[0]}</strong>! 👋<br/><br/>
-            Your KYC update is due by <strong>{c.due}</strong>. Complete it now to keep your account active and unlock pre-approved offers waiting for you!<br/><br/>
-            🔒 Takes just 5 minutes. Tap below to begin.
+            Your KYC update is due by <strong>{c.due}</strong>. Complete it now to keep your account active and unlock rewards waiting for you.<br/><br/>
+            🔒 Quick and secure — takes just 5 minutes.
           </div>
           <div class="wa-time">9:37 AM ✓✓</div>
         </div>
@@ -210,30 +219,61 @@ export class RekycCustomer {
       </div>
     );
 
+    // ── Browser: mobile entry ──
     case 'browser': return (
       <div class="scr">
         <div class="browser-bar"><span class="lock">🔒</span> <code><strong>https://</strong>nationalbank.co.in/rekyc</code></div>
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Secure Re-KYC Portal</span></div></div>
         {this.renderOfferTeaser(false)}
         <label class="field-label">Registered Mobile (last 4 digits) *</label>
-        <input class="field-input" type="text" inputMode="numeric" maxLength={4} placeholder="Enter last 4 digits" />
-        <div class="hint">Your registered mobile ends in ···{mobileLast4}</div>
-        <button class="btn-primary" onClick={() => this.go('auth_otp')}>Verify &amp; Proceed</button>
+        <input class="field-input" id="mob-entry" type="text" inputMode="numeric" maxLength={4}
+          placeholder="e.g. 3210"
+          value={this.mobileEntry}
+          onInput={(e: any) => { this.mobileEntry = e.target.value.replace(/\D/g,'').slice(0,4); }} />
+        <div class="hint">Enter the last 4 digits of your registered mobile number</div>
+        <button class="btn-primary" disabled={this.mobileEntry.length !== 4} onClick={() => this.go('auth_otp')}>Verify &amp; Proceed</button>
       </div>
     );
 
+    // ── Auth OTP ── (Fix 3: show last4 the user entered, confirming it matches)
     case 'auth_otp': return (
       <div class="scr tc">
-        <p class="t2">Enter the OTP sent to <strong>{maskedMobile}</strong></p>
+        <p class="t2">OTP sent to mobile ending in <strong>···{this.mobileEntry || last4}</strong></p>
         {this.renderOtp('auth')}
-        <button class="btn-primary" disabled={!this.otpFilled('auth')} onClick={() => this.go('landing')}>Authenticate</button>
+        <button class="btn-primary" disabled={!this.otpFilled('auth')} onClick={() => this.go('consent')}>Authenticate</button>
         <button class="btn-text">Resend OTP</button>
       </div>
     );
 
+    // ── Fix 1: CONSENT — now first screen after OTP, before anything else ──
+    case 'consent': return (
+      <div class="scr">
+        <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Re-KYC Consent</span></div></div>
+        {this.renderNotice('info', <span>Before we proceed, please read and accept the declarations below. This is required to update your KYC records with the bank.</span>)}
+
+        <div class="select-all-row" onClick={() => this.toggleAll()}>
+          <div class={{ 'chk-box': true, checked: this.allConsented() }}>
+            {this.allConsented() && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </div>
+          <span class="select-all-label">Accept All</span>
+        </div>
+
+        {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false,
+          <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>
+        ))}
+
+        <button class="btn-accent" style={{ marginTop: '16px' }}
+          disabled={!this.allConsented()}
+          onClick={() => this.go('landing')}>
+          Proceed to KYC Update
+        </button>
+        <p class="hint tc" style={{ marginTop: '8px' }}>By proceeding, you authorise National Bank to access and update your KYC records.</p>
+      </div>
+    );
+
+    // ── Landing ──
     case 'landing': return (
       <div class="scr">
-        {/* Fix 1: Removed account type — just show Customer ID */}
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Customer ID: {c.acct}</span></div></div>
         {this.renderNotice('warn', <span><strong>KYC renewal due by {c.due}.</strong> Update now to keep your account active.</span>)}
         {this.renderOfferTeaser(false)}
@@ -247,20 +287,23 @@ export class RekycCustomer {
 
         <h3 class="sec-title">Contact</h3>
         <div class="data-card">
+          {/* Fix 3: Show masked mobile using same last4 */}
           <div class="d-row"><span class="d-lbl">Mobile</span><span class="d-val">{maskedMobile}</span></div>
           <div class="d-row"><span class="d-lbl">Email</span><span class="d-val">{c.email}</span></div>
         </div>
 
-        {/* Fix 2/3/4/5: KYC details section overhauled */}
+        {/* Fix 2: Remove "No Expiry" text; show expiry only when applicable */}
         <h3 class="sec-title">KYC Details on Record</h3>
         {c.docsOnFile.map(d => {
           const expired = !d.valid;
+          // Clean meta: remove "No expiry" variants
+          const meta = d.meta.replace(/\s*•?\s*No expiry/gi, '').replace(/\s*•?\s*No Expiry/gi, '').trim();
           return (
             <div class={{ 'doc-row': true, 'doc-row-expired': expired }}>
               <div class="doc-icon">📄</div>
               <div class="doc-info">
                 <div class={{ 'doc-name': true, 'doc-name-expired': expired }}>{d.name}</div>
-                <div class="doc-meta">{d.meta}</div>
+                {meta && <div class="doc-meta">{meta}</div>}
               </div>
               {expired && <span class="badge red">Expired</span>}
             </div>
@@ -280,66 +323,32 @@ export class RekycCustomer {
         </div>
         <div class="action-card" onClick={() => this.go('full_intro')}>
           <div class="ac-icon amber">⚑</div>
-          {/* Fix 7: Renamed action card */}
           <div class="ac-body"><div class="ac-title">Name / Constitution Change or Document Expired</div><div class="ac-desc">Identity details changed or a document needs renewal</div><div class="ac-time">⏱ ~10 min</div></div>
           <div class="ac-arrow">›</div>
         </div>
       </div>
     );
 
-    // Fix 8: confirm screen — only digital signature, no consents
+    // ── Fix 5: Self-declaration — NO OTP (user already authenticated at start) ──
     case 'confirm': return (
       <div class="scr">
         {this.renderNotice('ok', 'You are confirming that all KYC details on record are correct and up-to-date.')}
         {this.renderOfferTeaser(false)}
         <h3 class="sec-title">Digital Signature</h3>
-        <p class="t2" style={{ marginBottom: '10px' }}>Type your full name below as your digital signature.</p>
+        <p class="t2" style={{ marginBottom: '10px' }}>Type your full name below as your digital signature to submit the declaration.</p>
         <label class="field-label">Full Name *</label>
         <input class="field-input" type="text" placeholder={`Enter: ${c.name}`} value={this.sigText} onInput={(e:any) => this.sigText = e.target.value} />
         <div class="hint">Must match your registered name exactly</div>
-        <button class="btn-accent" disabled={this.sigText.trim().length < 4} onClick={() => this.go('confirm_otp')}>Continue to OTP Verification</button>
-      </div>
-    );
-
-    case 'confirm_otp': return (
-      <div class="scr tc">
-        <p class="t2">Enter OTP sent to <strong>{maskedMobile}</strong></p>
-        {this.renderOtp('cotp')}
-        {/* Fix 8: After OTP verified → go to consent screen */}
-        <button class="btn-primary" disabled={!this.otpFilled('cotp')} onClick={() => this.go('consent')}>Verify OTP</button>
-        <button class="btn-text">Resend OTP</button>
-      </div>
-    );
-
-    // Fix 8: New consent screen — after OTP, before final submit
-    case 'consent': return (
-      <div class="scr">
-        <h3 class="sec-title">Consent &amp; Declaration</h3>
-        <p class="t2" style={{ marginBottom: '12px' }}>Please read and accept the following declarations before submitting.</p>
-
-        <div class="select-all-row" onClick={() => {
-          const allOn = !!(this.consents.c0 && this.consents.c1 && this.consents.c2);
-          this.consents = { ...this.consents, c0: !allOn, c1: !allOn, c2: !allOn };
-        }}>
-          <div class={{ 'chk-box': true, checked: !!(this.consents.c0 && this.consents.c1 && this.consents.c2) }}>
-            {this.consents.c0 && this.consents.c1 && this.consents.c2 &&
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
-          </div>
-          <span class="select-all-label">Select All</span>
-        </div>
-
-        {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false,
-          <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>
-        ))}
-
+        {/* Fix 5: Direct submit — no OTP needed as journey started with OTP */}
         <button class="btn-accent" style={{ marginTop: '16px' }}
-          disabled={!(this.consents.c0 && this.consents.c1 && this.consents.c2)}
+          disabled={this.sigText.trim().length < 4}
           onClick={() => this.completeKyc('Self-Declaration')}>
-          ✓ Submit Declaration
+          ✓ Submit Self-Declaration
         </button>
       </div>
     );
 
+    // ── FLOW B: Minor Update ──
     case 'minor_choice': return (
       <div class="scr">
         <h3 class="sec-title">What would you like to update?</h3>
@@ -362,7 +371,6 @@ export class RekycCustomer {
     );
     case 'mob_access': return (
       <div class="scr">
-        <h3 class="sec-title">Mobile Number Update</h3>
         {this.renderNotice('info', <span>Current registered mobile: <strong>{maskedMobile}</strong></span>)}
         <h3 class="sec-title">Do you have access to your current number?</h3>
         {this.renderRadio(this.accessOpt === 'yes', 'Yes, I can receive OTP', 'Verify via OTP on both numbers', () => this.accessOpt = 'yes')}
@@ -431,6 +439,7 @@ export class RekycCustomer {
       </div>
     );
 
+    // ── FLOW C: Full KYC ──
     case 'full_intro': return (
       <div class="scr">
         {this.renderNotice('info', <strong>Please complete all steps below to update your KYC.</strong>)}
@@ -448,14 +457,13 @@ export class RekycCustomer {
       </div>
     );
 
-    // Fix 9: Added DOB field
     case 'full_pan': return (
       <div class="scr">
         <h3 class="sec-title">Step 1: PAN Verification</h3>
         <label class="field-label">PAN Number *</label>
         <input class="field-input" placeholder="ABCPS1234K" maxLength={10} style={{ textTransform: 'uppercase' }} />
         <label class="field-label">Full Name (as on PAN) *</label>
-        <input class="field-input" placeholder="Enter name exactly as printed on PAN" />
+        <input class="field-input" placeholder="Enter name exactly as on PAN" />
         <label class="field-label">Date of Birth (as per PAN) *</label>
         <input class="field-input" type="date" />
         <div class="hint">DOB must match exactly as printed on your PAN card</div>
@@ -463,7 +471,6 @@ export class RekycCustomer {
       </div>
     );
 
-    // Fix 10: Aadhaar number input shown when OTP method selected; consent removed from here
     case 'full_aadhaar': return (
       <div class="scr">
         <h3 class="sec-title">Step 2: Aadhaar Validation</h3>
@@ -502,7 +509,7 @@ export class RekycCustomer {
     case 'full_aadhaar_otp': return (
       <div class="scr tc">
         <h3 class="sec-title">Aadhaar OTP Verification</h3>
-        <p class="t2">An OTP has been sent to the mobile number linked with your Aadhaar</p>
+        <p class="t2">OTP sent to the mobile linked with your Aadhaar</p>
         {this.renderOtp('adho')}
         <button class="btn-primary" disabled={!this.otpFilled('adho')} onClick={() => this.go('full_doc')}>Verify Aadhaar</button>
         <button class="btn-text">Resend OTP</button>
@@ -524,7 +531,6 @@ export class RekycCustomer {
       </div>
     );
 
-    // Fix 11: VKYC redesigned — link-based, not camera-first
     case 'full_vkyc': return (
       <div class="scr">
         <div class="vkyc-success-icon">✓</div>
@@ -564,14 +570,25 @@ export class RekycCustomer {
       </div>
     );
 
+    // ── Fix 4: Success — reward on verification, not instant ──
     case 'success': return (
       <div class="scr tc">
         <div class="suc-icon">✓</div>
-        <h2>KYC Updated Successfully</h2>
-        <p class="t2">Your account services continue uninterrupted.</p>
+        <h2>KYC Submitted Successfully</h2>
+        <p class="t2" style={{ marginBottom: '12px' }}>Thank you, <strong>{c.name.split(' ')[0]}</strong>. Your KYC submission is now under review.</p>
         {this.renderOfferTeaser(true)}
-        <div class="ref-card"><div class="ref-label">REFERENCE NUMBER</div><div class="ref-value">KYC-2026-{c.acct.slice(-4)}</div></div>
-        <button class="btn-primary" onClick={() => this.reset()}>Back to Home</button>
+        <div class="data-card" style={{ textAlign: 'left', marginTop: '12px' }}>
+          <div class="d-row"><span class="d-lbl">Status</span><span class="d-val" style={{ color: '#B8860B' }}>Under Review</span></div>
+          <div class="d-row"><span class="d-lbl">Submitted On</span><span class="d-val">{new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
+          <div class="d-row"><span class="d-lbl">Reference</span><span class="d-val">KYC-2026-{c.acct.slice(-4)}</span></div>
+        </div>
+        <div class="ref-card" style={{ background: 'var(--pri-bg)', marginTop: '12px' }}>
+          <div class="ref-label">WHAT HAPPENS NEXT</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--t2)', lineHeight: '1.6' }}>
+            Your KYC details will be verified by the bank within <strong>2–3 working days</strong>. You will receive a confirmation SMS and email once approved. Your reward will be credited upon successful verification.
+          </div>
+        </div>
+        <button class="btn-primary" style={{ marginTop: '16px' }} onClick={() => this.reset()}>Back to Home</button>
       </div>
     );
 
