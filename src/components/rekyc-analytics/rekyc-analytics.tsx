@@ -137,15 +137,11 @@ const ZONES: Record<string, ZoneData> = {
 // Totals: 196+312+284+198+96 = 1086 ✓
 // Completed: 97+140+136+83+10 = 466 ✓
 
-type ViewLevel = 'zone' | 'rm' | 'agent';
-
 @Component({ tag: 'rekyc-analytics', styleUrl: 'rekyc-analytics.css', shadow: false })
 export class RekycAnalytics {
   @State() period = '30d';
-  @State() viewLevel: ViewLevel = 'zone';
-  @State() selectedZone: string | null = null;
-  @State() selectedRM: string | null = null;
-  @State() selectedAgent: string | null = null;
+  @State() expanded: Record<string, boolean> = {};
+  @State() filterZone = 'all';
   private canvasTrend: HTMLCanvasElement;
   private canvasDoughnut: HTMLCanvasElement;
   private chartsLoaded = false;
@@ -196,23 +192,7 @@ export class RekycAnalytics {
     }
   }
 
-  // ── Computed data based on drill-down level ──
-  get currentZoneData() {
-    if (!this.selectedZone) return null;
-    return ZONES[this.selectedZone];
-  }
-
-  get currentRMData() {
-    if (!this.selectedZone || !this.selectedRM) return null;
-    return ZONES[this.selectedZone].rms[this.selectedRM];
-  }
-
-  get currentAgentData() {
-    if (!this.selectedZone || !this.selectedRM || !this.selectedAgent) return null;
-    const rm = ZONES[this.selectedZone].rms[this.selectedRM];
-    return rm.agents.find(a => a.name === this.selectedAgent) || null;
-  }
-
+  // ── Computed totals ──
   get totals() {
     const all = Object.values(ZONES);
     return {
@@ -223,23 +203,187 @@ export class RekycAnalytics {
     };
   }
 
-  // ── Breadcrumb navigation ──
-  renderBreadcrumb() {
+  // ── Expand/collapse helpers ──
+  toggle(key: string) { this.expanded = { ...this.expanded, [key]: !this.expanded[key] }; }
+  isOpen(key: string) { return !!this.expanded[key]; }
+  expandIcon(key: string) { return this.isOpen(key) ? '▾' : '▸'; }
+
+  tatColor(tat: number) { return tat <= 3.5 ? '#0B7A5B' : tat <= 5.5 ? '#B8860B' : '#900909'; }
+  pctColor(pct: number) { return pct >= 60 ? '#0B7A5B' : pct >= 40 ? '#B8860B' : '#900909'; }
+
+  renderPctBar(completed: number, total: number) {
+    const pct = Math.round(completed / total * 100);
+    const color = this.pctColor(pct);
     return (
-      <div class="breadcrumb">
-        <span class={!this.selectedZone ? 'bc-item bc-active' : 'bc-item bc-link'} onClick={() => { this.selectedZone = null; this.selectedRM = null; this.selectedAgent = null; this.viewLevel = 'zone'; }}>All Zones</span>
-        {this.selectedZone && [
-          <span class="bc-sep">›</span>,
-          <span class={!this.selectedRM ? 'bc-item bc-active' : 'bc-item bc-link'} onClick={() => { this.selectedRM = null; this.selectedAgent = null; this.viewLevel = 'rm'; }}>{this.selectedZone} Zone</span>
-        ]}
-        {this.selectedRM && [
-          <span class="bc-sep">›</span>,
-          <span class={!this.selectedAgent ? 'bc-item bc-active' : 'bc-item bc-link'} onClick={() => { this.selectedAgent = null; this.viewLevel = 'agent'; }}>{this.selectedRM}</span>
-        ]}
-        {this.selectedAgent && [
-          <span class="bc-sep">›</span>,
-          <span class="bc-item bc-active">{this.selectedAgent}</span>
-        ]}
+      <div class="pct-cell">
+        <div class="pct-bar-bg"><div class="pct-bar-fill" style={{ width: pct + '%', background: color }} /></div>
+        <span class="pct-num" style={{ color }}>{pct}%</span>
+      </div>
+    );
+  }
+
+  // ── Full hierarchy tree (expand/collapse) ──
+  renderHierarchyTree() {
+    const zones = this.filterZone === 'all' ? Object.entries(ZONES) : Object.entries(ZONES).filter(([z]) => z === this.filterZone);
+    return (
+      <div class="hier-tree-wrap">
+        <div class="hier-tree-toolbar">
+          <div class="hier-tree-title">Performance Hierarchy <span class="level-badge">Zone → RM → Agent → Cases</span></div>
+          <div class="zone-filter-pills">
+            {['all', ...Object.keys(ZONES)].map(z =>
+              <button class={this.filterZone === z ? 'zpill active' : 'zpill'} onClick={() => { this.filterZone = z; }}>{z === 'all' ? 'All Zones' : z}</button>
+            )}
+          </div>
+        </div>
+
+        <div class="tree-table">
+          {/* Header */}
+          <div class="tree-thead">
+            <div class="tcol-name">Name / Level</div>
+            <div class="tcol-n">Total</div>
+            <div class="tcol-n">Done</div>
+            <div class="tcol-n">Pending</div>
+            <div class="tcol-n">Rejected</div>
+            <div class="tcol-tat">Avg TAT</div>
+            <div class="tcol-pct">Completion</div>
+          </div>
+
+          {zones.map(([zoneName, zData]) => {
+            const zKey = zoneName;
+            const zOpen = this.isOpen(zKey);
+            return (
+              <div class="tree-zone-block">
+                {/* Zone row */}
+                <div class="tree-row zone-row" onClick={() => this.toggle(zKey)}>
+                  <div class="tcol-name zone-name">
+                    <span class="expand-icon">{this.expandIcon(zKey)}</span>
+                    <span class="row-icon zone-icon">Z</span>
+                    {zoneName} Zone
+                  </div>
+                  <div class="tcol-n">{zData.total}</div>
+                  <div class="tcol-n green">{zData.completed}</div>
+                  <div class="tcol-n amber">{zData.pending}</div>
+                  <div class="tcol-n red">{zData.rejected}</div>
+                  <div class="tcol-tat"><span class="tat-dot" style={{ background: '#64748B' }}>—</span></div>
+                  <div class="tcol-pct">{this.renderPctBar(zData.completed, zData.total)}</div>
+                </div>
+
+                {/* RM rows (visible when zone expanded) */}
+                {zOpen && Object.entries(zData.rms).map(([rmName, rm]) => {
+                  const rmKey = `${zKey}|${rmName}`;
+                  const rmOpen = this.isOpen(rmKey);
+                  const rmTatColor = this.tatColor(rm.avgTat);
+                  return (
+                    <div class="tree-rm-block">
+                      <div class="tree-row rm-row" onClick={() => this.toggle(rmKey)}>
+                        <div class="tcol-name rm-name">
+                          <span class="tree-indent" />
+                          <span class="expand-icon">{this.expandIcon(rmKey)}</span>
+                          <span class="row-icon rm-icon">R</span>
+                          {rmName}
+                          <span class="rm-label">Regional Manager</span>
+                        </div>
+                        <div class="tcol-n">{rm.total}</div>
+                        <div class="tcol-n green">{rm.completed}</div>
+                        <div class="tcol-n amber">{rm.pending}</div>
+                        <div class="tcol-n red">{rm.rejected}</div>
+                        <div class="tcol-tat"><span class="tat-chip" style={{ color: rmTatColor, background: rmTatColor + '18' }}>{rm.avgTat}d</span></div>
+                        <div class="tcol-pct">{this.renderPctBar(rm.completed, rm.total)}</div>
+                      </div>
+
+                      {/* Agent rows (visible when RM expanded) */}
+                      {rmOpen && rm.agents.map(agent => {
+                        const agKey = `${rmKey}|${agent.name}`;
+                        const agOpen = this.isOpen(agKey);
+                        const agTatColor = this.tatColor(agent.avgTat);
+                        return (
+                          <div class="tree-agent-block">
+                            <div class="tree-row agent-row" onClick={() => this.toggle(agKey)}>
+                              <div class="tcol-name agent-name">
+                                <span class="tree-indent" />
+                                <span class="tree-indent" />
+                                <span class="expand-icon">{this.expandIcon(agKey)}</span>
+                                <span class="row-icon agent-icon">A</span>
+                                {agent.name}
+                                <span class="agent-label">Field Agent</span>
+                              </div>
+                              <div class="tcol-n">{agent.total}</div>
+                              <div class="tcol-n green">{agent.completed}</div>
+                              <div class="tcol-n amber">{agent.pending}</div>
+                              <div class="tcol-n red">{agent.rejected}</div>
+                              <div class="tcol-tat"><span class="tat-chip" style={{ color: agTatColor, background: agTatColor + '18' }}>{agent.avgTat}d</span></div>
+                              <div class="tcol-pct">{this.renderPctBar(agent.completed, agent.total)}</div>
+                            </div>
+
+                            {/* Case rows (visible when agent expanded) */}
+                            {agOpen && (
+                              <div class="case-table-wrap">
+                                <table class="case-table">
+                                  <thead>
+                                    <tr>
+                                      <th class="ct-id">Case ID</th>
+                                      <th class="ct-cust">Customer</th>
+                                      <th class="ct-status">Status</th>
+                                      <th class="ct-risk">Risk</th>
+                                      <th class="ct-tat">TAT (days)</th>
+                                      <th class="ct-stat">TAT Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {agent.cases.map(c => {
+                                      const tc = this.tatColor(c.tat);
+                                      const tatLabel = c.tat <= 3.5 ? 'On Track' : c.tat <= 5.5 ? 'Delayed' : 'Breached';
+                                      const riskC = c.risk === 'High' ? '#900909' : c.risk === 'Medium' ? '#B8860B' : '#0B7A5B';
+                                      const riskBg = c.risk === 'High' ? '#FDE8E8' : c.risk === 'Medium' ? '#FFF8E6' : '#E6F5F0';
+                                      const stC = c.status === 'Completed' ? '#0B7A5B' : c.status === 'Rejected' ? '#900909' : '#B8860B';
+                                      const stBg = c.status === 'Completed' ? '#E6F5F0' : c.status === 'Rejected' ? '#FDE8E8' : '#FFF8E6';
+                                      return (
+                                        <tr>
+                                          <td class="ct-id ct-cell">{c.id}</td>
+                                          <td class="ct-cust ct-cell">{c.customer}</td>
+                                          <td class="ct-status ct-cell"><span class="c-pill" style={{ color: stC, background: stBg }}>{c.status}</span></td>
+                                          <td class="ct-risk ct-cell"><span class="c-pill" style={{ color: riskC, background: riskBg }}>{c.risk}</span></td>
+                                          <td class="ct-tat ct-cell ct-num">{c.tat}d</td>
+                                          <td class="ct-stat ct-cell"><span class="c-pill" style={{ color: tc, background: tc + '18' }}>{tatLabel}</span></td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <div class="case-tat-legend">
+                                  <span style={{ color: '#0B7A5B' }}>≤ 3.5d: On Track</span>
+                                  <span style={{ color: '#B8860B' }}>3.5–5.5d: Delayed</span>
+                                  <span style={{ color: '#900909' }}>&gt; 5.5d: Breached</span>
+                                  <span class="tat-sla">SLA target: 5 business days &nbsp;|&nbsp; Avg TAT: {agent.avgTat}d</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {/* Grand total row */}
+          {(() => {
+            const t = this.totals;
+            return (
+              <div class="tree-row total-row">
+                <div class="tcol-name total-name">GRAND TOTAL</div>
+                <div class="tcol-n">{t.total}</div>
+                <div class="tcol-n green">{t.completed}</div>
+                <div class="tcol-n amber">{t.pending}</div>
+                <div class="tcol-n red">{t.rejected}</div>
+                <div class="tcol-tat">—</div>
+                <div class="tcol-pct">{this.renderPctBar(t.completed, t.total)}</div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
     );
   }
@@ -250,194 +394,6 @@ export class RekycAnalytics {
         <div class="sb-label">{label}</div>
         <div class="sb-value" style={{ color }}>{value}</div>
         {pct && <div class="sb-pct">{pct}</div>}
-      </div>
-    );
-  }
-
-  // ── Zone level table ──
-  renderZoneTable() {
-    const t = this.totals;
-    return (
-      <div class="hier-table-wrap">
-        <div class="hier-table-title">Zone-wise Performance <span class="level-badge">Zonal View</span></div>
-        <table class="hier-table">
-          <thead>
-            <tr><th>Zone</th><th>Total Cases</th><th>Completed</th><th>Pending</th><th>Rejected</th><th>Completion %</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {Object.entries(ZONES).map(([zone, data]) => {
-              const pct = Math.round(data.completed / data.total * 100);
-              return (
-                <tr>
-                  <td class="h-name">{zone}</td>
-                  <td class="h-num">{data.total}</td>
-                  <td class="h-num green">{data.completed}</td>
-                  <td class="h-num amber">{data.pending}</td>
-                  <td class="h-num red">{data.rejected}</td>
-                  <td>
-                    <div class="pct-bar-row">
-                      <div class="pct-bar-bg"><div class="pct-bar-fill" style={{ width: pct + '%', background: pct >= 60 ? '#0B7A5B' : pct >= 40 ? '#FFAA00' : '#900909' }} /></div>
-                      <span class="pct-val">{pct}%</span>
-                    </div>
-                  </td>
-                  <td><button class="btn-drill" onClick={() => { this.selectedZone = zone; this.selectedRM = null; this.selectedAgent = null; this.viewLevel = 'rm'; }}>View RMs ›</button></td>
-                </tr>
-              );
-            })}
-            <tr class="total-row">
-              <td class="h-name">TOTAL</td>
-              <td class="h-num">{t.total}</td>
-              <td class="h-num green">{t.completed}</td>
-              <td class="h-num amber">{t.pending}</td>
-              <td class="h-num red">{t.rejected}</td>
-              <td><span class="pct-val">{Math.round(t.completed / t.total * 100)}%</span></td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  // ── RM level table ──
-  renderRMTable() {
-    const zData = this.currentZoneData;
-    if (!zData) return null;
-    return (
-      <div class="hier-table-wrap">
-        <div class="hier-table-title">Regional Manager Performance — {this.selectedZone} Zone <span class="level-badge">RM View</span></div>
-        <table class="hier-table">
-          <thead>
-            <tr><th>Regional Manager</th><th>Total Cases</th><th>Completed</th><th>Pending</th><th>Rejected</th><th>Avg TAT (days)</th><th>Completion %</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {Object.entries(zData.rms).map(([rmName, rm]) => {
-              const pct = Math.round(rm.completed / rm.total * 100);
-              const tatColor = rm.avgTat <= 3.5 ? '#0B7A5B' : rm.avgTat <= 5 ? '#FFAA00' : '#900909';
-              return (
-                <tr>
-                  <td class="h-name">{rmName}</td>
-                  <td class="h-num">{rm.total}</td>
-                  <td class="h-num green">{rm.completed}</td>
-                  <td class="h-num amber">{rm.pending}</td>
-                  <td class="h-num red">{rm.rejected}</td>
-                  <td><span class="tat-badge" style={{ color: tatColor, background: tatColor + '18' }}>{rm.avgTat}d</span></td>
-                  <td>
-                    <div class="pct-bar-row">
-                      <div class="pct-bar-bg"><div class="pct-bar-fill" style={{ width: pct + '%', background: pct >= 60 ? '#0B7A5B' : pct >= 40 ? '#FFAA00' : '#900909' }} /></div>
-                      <span class="pct-val">{pct}%</span>
-                    </div>
-                  </td>
-                  <td><button class="btn-drill" onClick={() => { this.selectedRM = rmName; this.selectedAgent = null; this.viewLevel = 'agent'; }}>View Agents ›</button></td>
-                </tr>
-              );
-            })}
-            <tr class="total-row">
-              <td class="h-name">ZONE TOTAL</td>
-              <td class="h-num">{zData.total}</td>
-              <td class="h-num green">{zData.completed}</td>
-              <td class="h-num amber">{zData.pending}</td>
-              <td class="h-num red">{zData.rejected}</td>
-              <td>—</td>
-              <td><span class="pct-val">{Math.round(zData.completed / zData.total * 100)}%</span></td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  // ── Agent level table ──
-  renderAgentTable() {
-    const rmData = this.currentRMData;
-    if (!rmData) return null;
-    return (
-      <div class="hier-table-wrap">
-        <div class="hier-table-title">Agent Performance — {this.selectedRM} <span class="level-badge">Agent View</span></div>
-        <table class="hier-table">
-          <thead>
-            <tr><th>Agent</th><th>Total Cases</th><th>Completed</th><th>Pending</th><th>Rejected</th><th>Avg TAT (days)</th><th>Completion %</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {rmData.agents.map(agent => {
-              const pct = Math.round(agent.completed / agent.total * 100);
-              const tatColor = agent.avgTat <= 3.5 ? '#0B7A5B' : agent.avgTat <= 5 ? '#FFAA00' : '#900909';
-              return (
-                <tr>
-                  <td class="h-name">{agent.name}</td>
-                  <td class="h-num">{agent.total}</td>
-                  <td class="h-num green">{agent.completed}</td>
-                  <td class="h-num amber">{agent.pending}</td>
-                  <td class="h-num red">{agent.rejected}</td>
-                  <td><span class="tat-badge" style={{ color: tatColor, background: tatColor + '18' }}>{agent.avgTat}d</span></td>
-                  <td>
-                    <div class="pct-bar-row">
-                      <div class="pct-bar-bg"><div class="pct-bar-fill" style={{ width: pct + '%', background: pct >= 60 ? '#0B7A5B' : pct >= 40 ? '#FFAA00' : '#900909' }} /></div>
-                      <span class="pct-val">{pct}%</span>
-                    </div>
-                  </td>
-                  <td><button class="btn-drill" onClick={() => { this.selectedAgent = agent.name; this.viewLevel = 'agent'; }}>View Cases ›</button></td>
-                </tr>
-              );
-            })}
-            <tr class="total-row">
-              <td class="h-name">RM TOTAL</td>
-              <td class="h-num">{rmData.total}</td>
-              <td class="h-num green">{rmData.completed}</td>
-              <td class="h-num amber">{rmData.pending}</td>
-              <td class="h-num red">{rmData.rejected}</td>
-              <td><span class="tat-badge" style={{ color: '#074994', background: '#E8F0F8' }}>{rmData.avgTat}d</span></td>
-              <td><span class="pct-val">{Math.round(rmData.completed / rmData.total * 100)}%</span></td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  // ── Case TAT detail view ──
-  renderCaseDetail() {
-    const agentData = this.currentAgentData;
-    if (!agentData) return null;
-    const tatColor = (tat: number) => tat <= 3 ? '#0B7A5B' : tat <= 6 ? '#FFAA00' : '#900909';
-    const riskColor = (r: string) => r === 'High' ? '#900909' : r === 'Medium' ? '#B8860B' : '#0B7A5B';
-    const riskBg = (r: string) => r === 'High' ? '#FDE8E8' : r === 'Medium' ? '#FFF8E6' : '#E6F5F0';
-    return (
-      <div class="hier-table-wrap">
-        <div class="hier-table-title">Case-wise TAT — {this.selectedAgent} <span class="level-badge">Case View</span></div>
-        <div class="agent-summary-bar">
-          <span>Total: <strong>{agentData.total}</strong></span>
-          <span class="green">Completed: <strong>{agentData.completed}</strong></span>
-          <span class="amber">Pending: <strong>{agentData.pending}</strong></span>
-          <span class="red">Rejected: <strong>{agentData.rejected}</strong></span>
-          <span>Avg TAT: <strong class="tat-inline">{agentData.avgTat} days</strong></span>
-        </div>
-        <table class="hier-table">
-          <thead>
-            <tr><th>Case ID</th><th>Customer</th><th>Status</th><th>Risk</th><th>TAT (days)</th><th>TAT Status</th></tr>
-          </thead>
-          <tbody>
-            {agentData.cases.map(c => (
-              <tr>
-                <td class="h-sub">{c.id}</td>
-                <td class="h-name">{c.customer}</td>
-                <td><span class={`status-pill ${c.status === 'Completed' ? 'sp-green' : c.status === 'Rejected' ? 'sp-red' : 'sp-amber'}`}>{c.status}</span></td>
-                <td><span class="risk-pill" style={{ color: riskColor(c.risk), background: riskBg(c.risk) }}>{c.risk}</span></td>
-                <td class="h-num">{c.tat}d</td>
-                <td><span class="tat-badge" style={{ color: tatColor(c.tat), background: tatColor(c.tat) + '18' }}>{c.tat <= 3 ? 'On Track' : c.tat <= 6 ? 'Delayed' : 'Breached'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div class="tat-legend">
-          <span class="tl-item" style={{ color: '#0B7A5B' }}>0–3d: On Track</span>
-          <span class="tl-item" style={{ color: '#B8860B' }}>3–6d: Delayed</span>
-          <span class="tl-item" style={{ color: '#900909' }}>6d+: Breached</span>
-          <span class="tl-sep">|</span>
-          <span>SLA Target: 5 business days</span>
-        </div>
       </div>
     );
   }
@@ -455,10 +411,6 @@ export class RekycAnalytics {
 
   render() {
     const t = this.totals;
-    const statsForLevel = this.selectedAgent ? this.currentAgentData :
-                          this.selectedRM ? this.currentRMData :
-                          this.selectedZone ? this.currentZoneData : t;
-    const st = statsForLevel as any;
 
     return (
       <div class="analytics-wrap">
@@ -479,7 +431,7 @@ export class RekycAnalytics {
         </div>
 
         <div class="ana-body">
-          {/* Top stat boxes — always show org-level */}
+          {/* Stat boxes */}
           <div class="stat-boxes-row">
             {this.renderStatBox('Total KYC Due', t.total, '#074994', '#E8F0F8', '100%')}
             {this.renderStatBox('Completed', t.completed, '#0B7A5B', '#E6F5F0', Math.round(t.completed/t.total*100) + '%')}
@@ -489,62 +441,46 @@ export class RekycAnalytics {
             {this.renderStatBox('Avg TAT', '4.2d', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
           </div>
 
-          {/* Breadcrumb + hierarchy filters */}
-          <div class="nav-row">
-            {this.renderBreadcrumb()}
-            {!this.selectedZone && (
-              <div class="filter-hint">Click "View RMs" to drill into a zone</div>
-            )}
-          </div>
-
-          {/* Charts + hierarchy table side by side */}
-          <div class="charts-hier-row">
-            {/* Left: charts */}
-            <div class="charts-col">
-              <div class="chart-card">
-                <div class="chart-title">Completion Rate Trend</div>
-                <div class="chart-sub">KYC completions across last 8 weeks</div>
-                <div style={{ height: '170px', position: 'relative' }}>
-                  <canvas ref={el => this.canvasTrend = el as HTMLCanvasElement} />
-                </div>
+          {/* Charts row — 3 columns */}
+          <div class="charts-top-row">
+            <div class="chart-card">
+              <div class="chart-title">Completion Rate Trend</div>
+              <div class="chart-sub">KYC completions across last 8 weeks</div>
+              <div style={{ height: '160px', position: 'relative' }}>
+                <canvas ref={el => this.canvasTrend = el as HTMLCanvasElement} />
               </div>
-              <div class="chart-card">
-                <div class="chart-title">Risk Category Mix</div>
-                <div class="chart-sub">Total: {t.total} cases</div>
-                <div class="donut-row">
-                  <div style={{ height: '120px', width: '120px', position: 'relative', flex: '0 0 120px' }}>
-                    <canvas ref={el => this.canvasDoughnut = el as HTMLCanvasElement} />
-                  </div>
-                  <div class="donut-legend-col">
-                    <div class="dl-item"><span class="dl-dot" style={{ background: '#900909' }} /><span>High Risk</span><strong>92</strong></div>
-                    <div class="dl-item"><span class="dl-dot" style={{ background: '#FFAA00' }} /><span>Medium Risk</span><strong>312</strong></div>
-                    <div class="dl-item"><span class="dl-dot" style={{ background: '#0B7A5B' }} /><span>Low Risk</span><strong>682</strong></div>
-                  </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Risk Category Mix</div>
+              <div class="chart-sub">Total: {t.total} cases</div>
+              <div class="donut-row">
+                <div style={{ height: '110px', width: '110px', position: 'relative', flex: '0 0 110px' }}>
+                  <canvas ref={el => this.canvasDoughnut = el as HTMLCanvasElement} />
                 </div>
-              </div>
-              <div class="chart-card">
-                <div class="chart-title">KYC Pipeline</div>
-                <div class="chart-sub">Distribution across stages (total: {t.total})</div>
-                <div class="pipeline">
-                  {this.renderPipelineRow('Completed', t.completed, t.total, '#0B7A5B')}
-                  {this.renderPipelineRow('Pending VKYC', 118, t.total, '#B8860B')}
-                  {this.renderPipelineRow('Pending Doc Upload', 124, t.total, '#FFAA00')}
-                  {this.renderPipelineRow('Pending Verification', 86, t.total, '#6D28D9')}
-                  {this.renderPipelineRow('In Progress', 96, t.total, '#3067A6')}
-                  {this.renderPipelineRow('Initiated', 105, t.total, '#ACC2DB')}
-                  {this.renderPipelineRow('Rejected', t.rejected, t.total, '#900909')}
+                <div class="donut-legend-col">
+                  <div class="dl-item"><span class="dl-dot" style={{ background: '#900909' }} /><span>High</span><strong>92</strong></div>
+                  <div class="dl-item"><span class="dl-dot" style={{ background: '#FFAA00' }} /><span>Medium</span><strong>312</strong></div>
+                  <div class="dl-item"><span class="dl-dot" style={{ background: '#0B7A5B' }} /><span>Low</span><strong>682</strong></div>
                 </div>
               </div>
             </div>
-
-            {/* Right: hierarchical table */}
-            <div class="hier-col">
-              {!this.selectedZone && this.renderZoneTable()}
-              {this.selectedZone && !this.selectedRM && this.renderRMTable()}
-              {this.selectedRM && !this.selectedAgent && this.renderAgentTable()}
-              {this.selectedAgent && this.renderCaseDetail()}
+            <div class="chart-card">
+              <div class="chart-title">KYC Pipeline</div>
+              <div class="chart-sub">Stage distribution — {t.total} total</div>
+              <div class="pipeline">
+                {this.renderPipelineRow('Completed', t.completed, t.total, '#0B7A5B')}
+                {this.renderPipelineRow('Pending VKYC', 118, t.total, '#B8860B')}
+                {this.renderPipelineRow('Pending Doc Upload', 124, t.total, '#FFAA00')}
+                {this.renderPipelineRow('Pending Verification', 86, t.total, '#6D28D9')}
+                {this.renderPipelineRow('In Progress', 96, t.total, '#3067A6')}
+                {this.renderPipelineRow('Initiated', 105, t.total, '#ACC2DB')}
+                {this.renderPipelineRow('Rejected', t.rejected, t.total, '#900909')}
+              </div>
             </div>
           </div>
+
+          {/* Hierarchy tree — full width */}
+          {this.renderHierarchyTree()}
         </div>
       </div>
     );
