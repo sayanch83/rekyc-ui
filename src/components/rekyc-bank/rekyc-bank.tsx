@@ -108,10 +108,7 @@ export class RekycBank {
   }
 
   chIcon(ch: string) {
-    if (ch === 'WhatsApp') return '💬';
-    if (ch === 'Email') return '📧';
-    if (ch === 'SMS') return '📱';
-    return '⚙️';
+    return ch;
   }
 
   // ── Render helpers ──
@@ -159,7 +156,7 @@ export class RekycBank {
     return (
       <div class={docClass}>
         <div class="doc-header">
-          <div class="doc-icon">📄</div>
+          <div class="doc-icon">Doc</div>
           <div class="doc-meta">
             <div class="doc-name">{doc.name}</div>
             <div class="doc-file">{doc.fileName} &bull; {doc.size}</div>
@@ -169,8 +166,8 @@ export class RekycBank {
         </div>
         {doc.fileId && (
           <div class="doc-actions-row">
-            <a href={fileUrl(doc.fileId)} target="_blank" class="btn-view-doc">👁 View</a>
-            <a href={fileUrl(doc.fileId)} download={doc.fileName} class="btn-dl-doc">⬇ Download</a>
+            <a href={fileUrl(doc.fileId)} target="_blank" class="btn-view-doc">View</a>
+            <a href={fileUrl(doc.fileId)} download={doc.fileName} class="btn-dl-doc">Download</a>
           </div>
         )}
         {doc.status !== 'pending' && doc.reviewedBy && (
@@ -181,8 +178,8 @@ export class RekycBank {
         )}
         {doc.status === 'pending' && !isRejecting && (
           <div class="doc-btn-row">
-            <button class="btn-approve" onClick={() => this.doApprove(doc.id)}>✓ Approve</button>
-            <button class="btn-reject" onClick={() => { this.rejectingDocId = doc.id; this.rejectReason = ''; }}>✗ Reject</button>
+            <button class="btn-approve" onClick={() => this.doApprove(doc.id)}>Approve</button>
+            <button class="btn-reject" onClick={() => { this.rejectingDocId = doc.id; this.rejectReason = ''; }}>Reject</button>
           </div>
         )}
         {isRejecting && (
@@ -326,6 +323,11 @@ export class RekycBank {
     );
   }
 
+  renderRiskBadge(risk: string) {
+    const s = risk === 'High' ? { bg: '#FDE8E8', c: '#900909' } : risk === 'Medium' ? { bg: '#FFF8E6', c: '#B8860B' } : { bg: '#E6F5F0', c: '#0B7A5B' };
+    return <span class="risk-badge" style={{ background: s.bg, color: s.c }}>{risk}</span>;
+  }
+
   renderTableRow(r: Customer) {
     const isActive = this.selected && this.selected.id === r.id;
     const docs = r.documents || [];
@@ -341,10 +343,11 @@ export class RekycBank {
         <td class="cell-sm">{(r as any).relationship || 'Savings'}</td>
         <td class="cell-sm">{(r as any).zone || '-'}<br/><span class="cell-city">{(r as any).city || ''}</span></td>
         <td class="cell-sm">{(r as any).assignedTo || <span class="cell-muted">Unassigned</span>}</td>
+        <td>{this.renderRiskBadge((r as any).risk || 'Low')}</td>
         <td><span class={`status-badge ${this.statusStyle(r.status)}`}>{r.status}</span></td>
         <td class="cell-sm">
           {r.source
-            ? <span class="source-tag">{r.source === 'Digital' ? '🌐 Digital' : '🏢 Branch'}</span>
+            ? <span class="source-tag">{r.source === 'Digital' ? 'Digital' : 'Branch'}</span>
             : <span class="cell-muted">-</span>
           }
         </td>
@@ -354,7 +357,7 @@ export class RekycBank {
         </td>
         <td class="cell-sm">
           {lastReminder
-            ? <div><div>{this.chIcon(lastReminder.ch)} {lastReminder.ch}</div><div class="cell-date">{lastReminder.date.split(',')[0]}</div></div>
+            ? <div><div class="cell-sm">{lastReminder.ch}</div><div class="cell-date">{lastReminder.date.split(',')[0]}</div></div>
             : <span class="cell-muted">-</span>
           }
         </td>
@@ -406,7 +409,7 @@ export class RekycBank {
           <div class="sidebar-section">Re-KYC</div>
           <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>📋 Dashboard</div>
           <div class="sidebar-item">👥 Customers</div>
-          <div class="sidebar-item">📄 Documents</div>
+          <div class="sidebar-item">Doc Documents</div>
           <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>📊 Analytics</div>
           <div class="sidebar-section">Settings</div>
           <div class="sidebar-item">⚙️ Configuration</div>
@@ -481,6 +484,7 @@ export class RekycBank {
                     <th>Relationship</th>
                     <th>Zone / City</th>
                     <th>Assigned To</th>
+                    <th>Risk</th>
                     <th>Status</th>
                     <th>Source</th>
                     <th>Docs</th>
