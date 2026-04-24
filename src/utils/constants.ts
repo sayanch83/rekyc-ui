@@ -11,6 +11,20 @@ export interface DocOnFile {
   valid: boolean;
 }
 
+export interface KycStep {
+  status: string;
+  date: string | null;
+  type?: string;
+  mode?: string;
+}
+
+export interface AgentGeo {
+  time: string;
+  location: string;
+  distance: string;
+  distanceOk: boolean;
+}
+
 export interface UploadedDoc {
   id: string;
   name: string;
@@ -45,6 +59,15 @@ export interface Customer {
   due: string;
   status: string;
   kycType: string | null;
+  relationship?: string;
+  zone?: string;
+  city?: string;
+  assignedTo?: string | null;
+  panStep?: KycStep | null;
+  poiStep?: KycStep | null;
+  poaStep?: KycStep | null;
+  vkycStep?: KycStep | null;
+  agentGeo?: AgentGeo | null;
   docsOnFile: DocOnFile[];
   reminders: Reminder[];
   linkActive: boolean;
