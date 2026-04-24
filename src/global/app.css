@@ -33,6 +33,7 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--txt); 
 /* Bank dashboard viewport fix - Stencil custom elements need explicit display/height */
 rekyc-app { display: block; width: 100%; }
 rekyc-bank { display: block; width: 100%; height: 100vh; overflow: hidden; }
+rekyc-analytics { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .dash { height: 100vh !important; overflow: hidden !important; }
 .phone-wrap{display:flex;justify-content:center;padding:12px;min-height:100vh}
 .phone{width:100%;max-width:420px;min-height:780px;background:var(--sf);border-radius:32px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.11);display:flex;flex-direction:column;position:relative}

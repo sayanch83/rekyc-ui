@@ -17,6 +17,7 @@ html,body{height:100%;overflow:hidden}
 
 /* ═══ CONTENT COLUMN ═══ */
 .content-wrap{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.dash-content{flex:1;display:flex;flex-direction:column;overflow:hidden}
 
 /* ═══ TOPBAR ═══ */
 .topbar{background:#fff;border-bottom:1px solid #E2E8F0;padding:14px 24px 0;flex-shrink:0}

@@ -3,6 +3,7 @@ import { Customer, UploadedDoc, fetchCustomers, fetchCustomer, reviewDocument, r
 
 @Component({ tag: 'rekyc-bank', styleUrl: 'rekyc-bank.css', shadow: false })
 export class RekycBank {
+  @State() page: 'dashboard' | 'analytics' = 'dashboard';
   @State() customers: Customer[] = [];
   @State() selected: Customer | null = null;
   @State() filter = 'all';
@@ -403,87 +404,98 @@ export class RekycBank {
             <span class="sidebar-brand">National Bank</span>
           </div>
           <div class="sidebar-section">Re-KYC</div>
-          <div class="sidebar-item active">📋 Dashboard</div>
+          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>📋 Dashboard</div>
           <div class="sidebar-item">👥 Customers</div>
           <div class="sidebar-item">📄 Documents</div>
-          <div class="sidebar-item">📊 Reports</div>
+          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>📊 Analytics</div>
           <div class="sidebar-section">Settings</div>
           <div class="sidebar-item">⚙️ Configuration</div>
         </div>
 
         {/* Main content */}
         <div class="content-wrap">
-          {/* Top bar */}
-          <div class="topbar">
-            <div class="topbar-title-row">
-              <div>
-                <h1 class="page-title">Re-KYC Dashboard</h1>
-                <div class="page-sub">National Bank Ltd. &bull; Operations Team</div>
-              </div>
-              <div class="topbar-right">
-                <div class="search-wrap">
-                  <span class="search-icon">🔍</span>
-                  <input class="search-input" placeholder="Search by name, ID, mobile..." value={this.searchQuery} onInput={(e: any) => { this.searchQuery = e.target.value; }} />
-                </div>
-                <div class="topbar-user">
-                  <div class="user-avatar">KO</div>
-                  <div class="user-info"><div class="user-name">KYC Officer</div><div class="user-role">Operations</div></div>
-                </div>
-              </div>
-            </div>
+          {this.page === 'analytics'
+            ? <rekyc-analytics />
+            : this.renderDashboard(d, all, totalPending, totalCompleted, totalOverdue)
+          }
+        </div>
+      </div>
+    );
+  }
 
-            {/* Stat cards */}
-            <div class="stats-row">
-              {this.renderStatCard('Total Triggered', all.length, '📋', '#074994')}
-              {this.renderStatCard('Active / Pending', totalPending, '⏳', '#B8860B')}
-              {this.renderStatCard('Completed', totalCompleted, '✅', '#0B7A5B')}
-              {this.renderStatCard('Rejected', totalOverdue, '❌', '#900909')}
+  renderDashboard(d: Customer | null, all: Customer[], totalPending: number, totalCompleted: number, totalOverdue: number) {
+    return (
+      <div class="dash-content">
+        {/* Top bar */}
+        <div class="topbar">
+          <div class="topbar-title-row">
+            <div>
+              <h1 class="page-title">Re-KYC Dashboard</h1>
+              <div class="page-sub">National Bank Ltd. &bull; Operations Team</div>
             </div>
-
-            {/* Filters */}
-            <div class="filter-row">
-              {this.renderFilterBtn('all', 'All Cases')}
-              {this.renderFilterBtn('Link Generated', 'Link Generated')}
-              {this.renderFilterBtn('Initiated', 'Initiated')}
-              {this.renderFilterBtn('In Progress', 'In Progress')}
-              {this.renderFilterBtn('Pending Doc Upload', 'Pending Upload')}
-              {this.renderFilterBtn('Pending VKYC', 'Pending VKYC')}
-              {this.renderFilterBtn('Pending Verification', 'Pending Verification')}
-              {this.renderFilterBtn('Completed', 'Completed')}
-              {this.renderFilterBtn('Rejected', 'Rejected')}
+            <div class="topbar-right">
+              <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input class="search-input" placeholder="Search by name, ID, mobile..." value={this.searchQuery} onInput={(e: any) => { this.searchQuery = e.target.value; }} />
+              </div>
+              <div class="topbar-user">
+                <div class="user-avatar">KO</div>
+                <div class="user-info"><div class="user-name">KYC Officer</div><div class="user-role">Operations</div></div>
+              </div>
             </div>
           </div>
 
-          {/* Table + detail */}
-          <div class="main-body">
-            <div class="table-area">
-              <div class="table-header-row">
-                <span class="table-count">{this.filtered.length} records</span>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Customer</th>
-                      <th>Relationship</th>
-                      <th>Zone / City</th>
-                      <th>Assigned To</th>
-                      <th>Status</th>
-                      <th>Source</th>
-                      <th>Docs</th>
-                      <th>Last Reminder</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {this.filtered.map(r => this.renderTableRow(r))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {d && this.renderDetail(d)}
+          {/* Stat cards */}
+          <div class="stats-row">
+            {this.renderStatCard('Total Triggered', all.length, '📋', '#074994')}
+            {this.renderStatCard('Active / Pending', totalPending, '⏳', '#B8860B')}
+            {this.renderStatCard('Completed', totalCompleted, '✅', '#0B7A5B')}
+            {this.renderStatCard('Rejected', totalOverdue, '❌', '#900909')}
           </div>
+
+          {/* Filters */}
+          <div class="filter-row">
+            {this.renderFilterBtn('all', 'All Cases')}
+            {this.renderFilterBtn('Link Generated', 'Link Generated')}
+            {this.renderFilterBtn('Initiated', 'Initiated')}
+            {this.renderFilterBtn('In Progress', 'In Progress')}
+            {this.renderFilterBtn('Pending Doc Upload', 'Pending Upload')}
+            {this.renderFilterBtn('Pending VKYC', 'Pending VKYC')}
+            {this.renderFilterBtn('Pending Verification', 'Pending Verification')}
+            {this.renderFilterBtn('Completed', 'Completed')}
+            {this.renderFilterBtn('Rejected', 'Rejected')}
+          </div>
+        </div>
+
+        {/* Table + detail */}
+        <div class="main-body">
+          <div class="table-area">
+            <div class="table-header-row">
+              <span class="table-count">{this.filtered.length} records</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Relationship</th>
+                    <th>Zone / City</th>
+                    <th>Assigned To</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Docs</th>
+                    <th>Last Reminder</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {this.filtered.map(r => this.renderTableRow(r))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {d && this.renderDetail(d)}
         </div>
       </div>
     );
