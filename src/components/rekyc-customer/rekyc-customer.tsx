@@ -1,11 +1,11 @@
 import { Component, h, State, Prop } from '@stencil/core';
-import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured, getDigilockerAuthUrl, checkDigilockerStatus } from '../../utils/constants';
+import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured, getDigilockerAuthUrl, checkDigilockerStatus, validateLinkToken, consumeLinkToken } from '../../utils/constants';
 
 type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
   |'full_intro'|'full_pan'|'full_pan_result'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'|'digilocker_result'
-  |'full_doc'|'full_vkyc'|'full_vkyc_live'|'resubmit'|'success';
+  |'full_doc'|'full_vkyc'|'full_vkyc_live'|'resubmit'|'success'|'link_error';
 
 // ── Aadhaar Verhoeff checksum ──
 const MULT = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
@@ -94,52 +94,65 @@ export class RekycCustomer {
   @State() digilockerDob = '';
   @State() digilockerLoading = false;
   @State() newConstitution = '';
-  @State() simLoading = false; // generic simulated loading state
+  @State() simLoading = false;
+  @State() linkToken = '';           // token from SMS link
+  @State() linkError = '';           // shown if token invalid/expired
+  @State() tokenValidating = false;  // spinner on browser screen // generic simulated loading state
 
   private sessionTimer: any;
   private cooldownTimer: any;
 
   async componentWillLoad() {
-    // Check for customer ID in URL params (from SMS re-KYC link)
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const urlId = params.get('id') || params.get('custId');
-      if (urlId) {
+      const token  = params.get('token');
+      const urlId  = params.get('id') || params.get('custId');
+
+      if (token) {
+        // Token-based link — validate first, get custId
+        this.linkToken = token;
+        window.history.replaceState({}, '', '/customer');
+        const result = await validateLinkToken(token);
+        if (result.valid && result.custId) {
+          (this as any).customerId = result.custId;
+          // Skip whatsapp screen — go straight to mobile entry with pre-filled hint
+          this.screen = 'browser';
+          this.hist   = ['browser'];
+        } else {
+          this.linkError = result.error || 'This link is invalid or has expired.';
+          this.screen = 'link_error' as any;
+          this.hist   = ['link_error' as any];
+        }
+      } else if (urlId) {
         (this as any).customerId = urlId;
         window.history.replaceState({}, '', '/customer');
       }
-    }
 
-    try { this.cust = await fetchCustomer(this.customerId); }
-    catch (e) { console.error('Failed to load customer:', e); }
-
-    // Handle DigiLocker OAuth callback — URL params set by API redirect
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('dl_verified')) {
-        // Poll for verified data
+      // DigiLocker callback
+      const dlVerified = params.get('dl_verified');
+      const dlError    = params.get('dl_error');
+      if (dlVerified) {
         this.digilockerLoading = true;
         try {
           const status = await checkDigilockerStatus(this.customerId);
           if (status.verified) {
             this.digilockerVerified = true;
             this.digilockerName = status.name || '';
-            this.digilockerDob = status.dob || '';
-            // Refresh customer data
-            this.cust = await fetchCustomer(this.customerId);
+            this.digilockerDob  = status.dob  || '';
           }
         } finally { this.digilockerLoading = false; }
-        // Navigate to doc upload screen — consent already given earlier
-        this.hist = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar','digilocker','digilocker_result'];
+        this.hist   = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar','digilocker','digilocker_result'];
         this.screen = 'digilocker_result' as any;
-        // Clean URL
         window.history.replaceState({}, '', '/customer');
-      } else if (params.get('dl_error')) {
-        this.hist = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar'];
+      } else if (dlError) {
+        this.hist   = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar'];
         this.screen = 'full_aadhaar';
         window.history.replaceState({}, '', '/customer');
       }
     }
+
+    try { this.cust = await fetchCustomer(this.customerId); }
+    catch (e) { console.error('Failed to load customer:', e); }
   }
   disconnectedCallback() {
     clearInterval(this.sessionTimer);
@@ -215,8 +228,10 @@ export class RekycCustomer {
     }, 1000);
   }
 
-  // ── Mobile validation — just format check, no DB match ──
-  validateMobile(): boolean {
+  // ── Mobile validation ──
+  // When arriving via SMS link: validate entered mobile against the token
+  // When arriving directly: just check format
+  async validateMobileAsync(): Promise<boolean> {
     const digits = this.mobileEntry.replace(/\D/g, '');
     if (digits.length !== 10) {
       this.mobileError = 'Please enter a valid 10-digit Indian mobile number.';
@@ -226,6 +241,32 @@ export class RekycCustomer {
       this.mobileError = 'Mobile number must start with 6, 7, 8, or 9.';
       return false;
     }
+
+    // Token flow — validate mobile matches the token
+    if (this.linkToken) {
+      this.tokenValidating = true;
+      try {
+        const result = await validateLinkToken(this.linkToken, `+91${digits}`);
+        if (!result.valid) {
+          this.mobileError = result.error || 'Mobile number does not match this link. Please use the number where the SMS was received.';
+          return false;
+        }
+      } catch(e) {
+        this.mobileError = 'Could not verify. Please check your connection.';
+        return false;
+      } finally {
+        this.tokenValidating = false;
+      }
+    }
+
+    this.mobileError = '';
+    return true;
+  }
+
+  validateMobile(): boolean {
+    const digits = this.mobileEntry.replace(/\D/g, '');
+    if (digits.length !== 10) { this.mobileError = 'Please enter a valid 10-digit Indian mobile number.'; return false; }
+    if (!/^[6-9]/.test(digits)) { this.mobileError = 'Mobile number must start with 6, 7, 8, or 9.'; return false; }
     this.mobileError = '';
     return true;
   }
@@ -529,6 +570,7 @@ export class RekycCustomer {
     full_vkyc_live: ['VKYC Live', 'In progress'],
     resubmit: ['Re-upload Document', 'Action required'],
     success: ['Done', 'KYC Submitted'],
+    link_error: ['Link Invalid', 'Access denied'],
   };
 
   render() {
@@ -579,6 +621,17 @@ export class RekycCustomer {
 
     switch (this.screen) {
 
+    case 'link_error': return (
+      <div class="scr tc">
+        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+        <h2 style={{ color: 'var(--dng)', marginBottom: '8px' }}>Link Unavailable</h2>
+        <p class="t2" style={{ marginBottom: '20px' }}>{this.linkError}</p>
+        <div class="data-card" style={{ textAlign: 'left' }}>
+          <div class="d-row"><span class="d-lbl">What to do</span><span class="d-val" style={{ fontSize: '12px' }}>Contact your National Bank branch or relationship manager to request a new Re-KYC link.</span></div>
+        </div>
+      </div>
+    );
+
     case 'whatsapp': return (
       <div class="scr">
         <p class="intro">You received a message from <strong>National Bank</strong>.</p>
@@ -610,10 +663,19 @@ export class RekycCustomer {
         </div>
         {this.mobileError
           ? <div class="field-error">{this.mobileError}</div>
-          : <div class="hint">An OTP will be sent to this number to verify your identity</div>}
-        <button class="btn-primary" disabled={this.mobileEntry.replace(/\D/g,'').length !== 10 || this.otpSending}
-          onClick={() => { if (this.validateMobile()) this.triggerOtp(() => this.go('auth_otp')); }}>
-          {this.otpSending ? 'Sending OTP...' : 'Send OTP'}
+          : <div class="hint">
+              {this.linkToken
+                ? 'Enter the mobile number where you received this link'
+                : 'An OTP will be sent to this number to verify your identity'}
+            </div>}
+        <button class="btn-primary" disabled={this.mobileEntry.replace(/\D/g,'').length !== 10 || this.otpSending || this.tokenValidating}
+          onClick={async () => {
+            const valid = await this.validateMobileAsync();
+            if (valid) this.triggerOtp(() => this.go('auth_otp'));
+          }}>
+          {this.tokenValidating ? <span class="btn-loading"><span class="btn-spinner"/>Verifying...</span>
+            : this.otpSending ? <span class="btn-loading"><span class="btn-spinner"/>Sending OTP...</span>
+            : 'Send OTP'}
         </button>
       </div>
     );
@@ -627,7 +689,12 @@ export class RekycCustomer {
         }
         {!this.otpLocked && this.renderOtpFooter('auth', this.maskedEnteredMobile, this.e164Mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('auth') || this.otpLocked}
-          onClick={() => this.verifyOtpCode('auth', this.e164Mobile, () => { this.startSession(); this.go('consent'); })}>
+          onClick={() => this.verifyOtpCode('auth', this.e164Mobile, () => {
+            // Consume the token so link can't be reused
+            if (this.linkToken) consumeLinkToken(this.linkToken);
+            this.startSession();
+            this.go('consent');
+          })}>
           Authenticate
         </button>
         {this.otpLocked && <button class="btn-text" onClick={() => this.reset()}>Start Over</button>}

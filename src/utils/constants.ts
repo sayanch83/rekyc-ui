@@ -203,3 +203,25 @@ export async function updateDemoConfig(custId: string, updates: Partial<Customer
   });
   return r.json();
 }
+
+// ── Link token validation ──
+export async function validateLinkToken(token: string, mobile?: string): Promise<{
+  valid: boolean; custId?: string; maskedMobile?: string; name?: string; error?: string;
+}> {
+  try {
+    const r = await fetch(`${API}/api/link/validate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, mobile }),
+    });
+    return r.json();
+  } catch(e) { return { valid: false, error: 'Network error' }; }
+}
+
+export async function consumeLinkToken(token: string): Promise<void> {
+  try {
+    await fetch(`${API}/api/link/consume`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch(e) { /* fire and forget */ }
+}

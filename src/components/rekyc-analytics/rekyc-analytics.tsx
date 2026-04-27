@@ -153,17 +153,26 @@ export class RekycAnalytics {
   private chartsLoaded = false;
 
   componentDidLoad() { this.initCharts(); this.loadLiveData(); }
-  componentDidUpdate() { setTimeout(() => this.drawCharts(), 100); }
+  componentDidUpdate() {
+    // Only redraw charts — do not re-fetch live data (prevents flicker loop)
+    if (this.chartsLoaded) setTimeout(() => this.drawCharts(), 50);
+  }
 
   async loadLiveData() {
     try {
       const apiBase = (window as any).__REKYC_API__ || 'https://rekyc-work-production.up.railway.app';
       const r = await fetch(`${apiBase}/api/customers`);
       const customers: any[] = await r.json();
-      this.liveTotal     = customers.length;
-      this.liveCompleted = customers.filter(c => c.status === 'Completed').length;
-      this.livePending   = customers.filter(c => !['Completed','Rejected'].includes(c.status)).length;
-      this.liveRejected  = customers.filter(c => c.status === 'Rejected').length;
+      // Batch ALL state updates in one tick to prevent multiple re-renders / flicker
+      const total     = customers.length;
+      const completed = customers.filter(c => c.status === 'Completed').length;
+      const pending   = customers.filter(c => !['Completed','Rejected'].includes(c.status)).length;
+      const rejected  = customers.filter(c => c.status === 'Rejected').length;
+      // Single state object update — Stencil batches writes in the same microtask
+      this.liveTotal     = total;
+      this.liveCompleted = completed;
+      this.livePending   = pending;
+      this.liveRejected  = rejected;
       this.liveLoaded    = true;
     } catch(e) { console.warn('Analytics live data failed:', e); }
   }

@@ -1,7 +1,7 @@
 import { Component, h, State } from '@stencil/core';
 import { API } from '../../utils/constants';
 
-interface UploadRow { name: string; mobile: string; email: string; acct: string; relationship: string; zone: string; due: string; }
+interface UploadRow { name: string; mobile: string; email: string; acct: string; relationship: string; zone: string; due: string; risk: string; }
 interface ErrorRow extends UploadRow { error: string; row: number; }
 interface ResultRow extends UploadRow { id: string; status: 'created' | 'duplicate' | 'error'; error?: string; }
 
@@ -33,6 +33,7 @@ export class ReKycBulk {
     const relIdx     = idx('relation') >= 0 ? idx('relation') : idx('type');
     const zoneIdx    = idx('zone');
     const dueIdx     = idx('due');
+    const riskIdx    = idx('risk');
 
     const rows: UploadRow[] = [];
     const errors: ErrorRow[] = [];
@@ -48,6 +49,7 @@ export class ReKycBulk {
         relationship: cols[relIdx] || 'Savings Account',
         zone: cols[zoneIdx] || 'West',
         due: cols[dueIdx] || '30 Apr 2026',
+        risk: cols[riskIdx] || 'Low',
       };
 
       const rowErrors = [];
@@ -92,13 +94,16 @@ export class ReKycBulk {
       // Create new customer record
       try {
         const newId = `KYC-${Date.now().toString().slice(-4)}${Math.floor(Math.random()*1000)}`;
+        const mobileFormatted = `+91 ${mobileDigits.slice(-10)}`;
+        const validRisks = ['Low','Medium','High'];
+        const riskVal = validRisks.includes(row.risk) ? row.risk : 'Low';
         const payload = {
           id: newId, name: row.name, acct: `XXXX${acctClean}`,
-          mobile: `+91 ${mobileDigits.slice(-10)}`, email: row.email,
+          mobile: mobileFormatted, email: row.email,
           dob: '', pan: 'PENDING', aadhaar: 'PENDING',
           constitution: 'Individual', relationship: row.relationship,
           address: '', zone: row.zone, city: '', assignedTo: null,
-          due: row.due, status: 'Link Generated', kycType: null, risk: 'Low',
+          due: row.due, status: 'Link Generated', kycType: null, risk: riskVal,
           docsOnFile: [], reminders: [{ ch: 'System', date: new Date().toLocaleDateString('en-IN'), status: 'Record created via bulk upload' }],
           linkActive: true, linkExpiry: row.due + ', 11:59 PM',
           source: null, agent: null, completedDate: null, agentGeo: null,
@@ -108,8 +113,14 @@ export class ReKycBulk {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (r.ok) results.push({ ...row, id: newId, status: 'created' });
-        else results.push({ ...row, id: '', status: 'error', error: 'API error creating record' });
+        if (r.ok) {
+          results.push({ ...row, id: newId, status: 'created' });
+          // Fix 3: Send SMS link automatically after record is created
+          fetch(`${API}/api/customers/${newId}/regen-link`, { method: 'POST' })
+            .catch(() => {}); // fire-and-forget — don't block on SMS failure
+        } else {
+          results.push({ ...row, id: '', status: 'error', error: 'API error creating record' });
+        }
       } catch(e) {
         results.push({ ...row, id: '', status: 'error', error: 'Network error' });
       }
@@ -127,8 +138,8 @@ export class ReKycBulk {
     const errorRows = this.results.filter(r => r.status !== 'created');
     if (errorRows.length === 0) return;
     const csv = [
-      'Row,Name,Mobile,Account,Relationship,Zone,Status,Error',
-      ...errorRows.map((r, i) => `${i+1},"${r.name}","${r.mobile}","${r.acct}","${r.relationship}","${r.zone}","${r.status}","${r.error || ''}"`)
+      'Row,Name,Mobile,Account,Relationship,Zone,Risk,Status,Error',
+      ...errorRows.map((r, i) => `${i+1},"${r.name}","${r.mobile}","${r.acct}","${r.relationship}","${r.zone}","${r.risk || 'Low'}","${r.status}","${r.error || ''}"`)
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -138,7 +149,7 @@ export class ReKycBulk {
   }
 
   downloadTemplate() {
-    const csv = 'Name,Mobile,Email,Account Number,Relationship Type,Zone,Due Date\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,30 Apr 2026';
+    const csv = 'Name,Mobile,Email,Account Number,Relationship Type,Zone,Due Date,Risk\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,30 Apr 2026,Low';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -207,10 +218,10 @@ export class ReKycBulk {
               <div class="preview-table-wrap">
                 <div class="pt-title">Records to be created ({this.rows.length})</div>
                 <table class="preview-table">
-                  <thead><tr><th>Name</th><th>Mobile</th><th>Account</th><th>Relationship</th><th>Zone</th><th>Due</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Mobile</th><th>Account</th><th>Relationship</th><th>Zone</th><th>Risk</th><th>Due</th></tr></thead>
                   <tbody>
                     {this.rows.slice(0,10).map(r =>
-                      <tr><td>{r.name}</td><td>{r.mobile}</td><td>{r.acct}</td><td>{r.relationship}</td><td>{r.zone}</td><td>{r.due}</td></tr>
+                      <tr><td>{r.name}</td><td>{r.mobile}</td><td>{r.acct}</td><td>{r.relationship}</td><td>{r.zone}</td><td>{r.risk || 'Low'}</td><td>{r.due}</td></tr>
                     )}
                     {this.rows.length > 10 && <tr><td colSpan={6} class="more-rows">... and {this.rows.length - 10} more rows</td></tr>}
                   </tbody>
