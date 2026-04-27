@@ -194,3 +194,12 @@ export async function checkDigilockerStatus(custId: string): Promise<{ verified:
     return r.json();
   } catch(e) { return { verified: false }; }
 }
+
+// ── Demo Config API — update customer before demo ──
+export async function updateDemoConfig(custId: string, updates: Partial<Customer>): Promise<Customer> {
+  const r = await fetch(`${API}/api/customers/${custId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return r.json();
+}

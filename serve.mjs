@@ -58,7 +58,8 @@ http.createServer((req, res) => {
   }
 
   if (url === '/' || url === '/customer' || url === '/customer/' ||
-      url === '/bank' || url === '/bank/') {
+      url === '/bank' || url === '/bank/' ||
+      url === '/config' || url === '/config/') {
     return serveHtml(res, path.join(WWW, 'index.html'));
   }
 

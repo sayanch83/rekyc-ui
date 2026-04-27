@@ -93,6 +93,8 @@ export class RekycCustomer {
   @State() digilockerName = '';
   @State() digilockerDob = '';
   @State() digilockerLoading = false;
+  @State() newConstitution = '';
+  @State() simLoading = false; // generic simulated loading state
 
   private sessionTimer: any;
   private cooldownTimer: any;
@@ -294,16 +296,36 @@ export class RekycCustomer {
       return;
     }
 
-    // Check 4th character — must be 'P' for Individual
+    // Check 4th character maps to entity type
     const entityCode = pan[3];
-    if (entityCode !== 'P') {
-      const entityMap: Record<string, string> = {
-        C: 'Company', H: 'Hindu Undivided Family', F: 'Firm',
-        A: 'Association of Persons', T: 'Trust', B: 'Body of Individuals',
+    const entityMap: Record<string, string> = {
+      P: 'Individual', C: 'Company', H: 'Hindu Undivided Family',
+      F: 'Firm', A: 'Association of Persons', T: 'Trust', B: 'Body of Individuals',
+    };
+    const detectedType = entityMap[entityCode] || 'Unknown';
+
+    // If constitution change selected, PAN must match the new constitution
+    if (this.newConstitution) {
+      const constitutionPanMap: Record<string, string[]> = {
+        'Individual': ['P'],
+        'Sole Proprietorship': ['P'],
+        'HUF': ['H'],
+        'Partnership Firm': ['F'],
+        'Company': ['C'],
+        'Trust': ['T'],
+        'AOP / BOI': ['A', 'B'],
       };
-      const entityType = entityMap[entityCode] || 'Non-Individual entity';
-      this.panError = `This PAN belongs to a ${entityType}. Re-KYC is only applicable for Individual customers. Please use your personal PAN card.`;
-      return;
+      const validCodes = constitutionPanMap[this.newConstitution] || ['P'];
+      if (!validCodes.includes(entityCode)) {
+        this.panError = `PAN type mismatch. For ${this.newConstitution}, PAN must belong to ${validCodes.map(x => entityMap[x]).join(' or ')}. This PAN belongs to: ${detectedType}.`;
+        return;
+      }
+    } else {
+      // Default: only Individual PANs allowed
+      if (entityCode !== 'P') {
+        this.panError = `This PAN belongs to a ${detectedType}. Individual Re-KYC requires a personal PAN card (4th character must be 'P').`;
+        return;
+      }
     }
 
     this.panError = '';
@@ -729,7 +751,7 @@ export class RekycCustomer {
     case 'addr': return (
       <div class="scr">
         <h3 class="sec-title">New Address Details</h3>
-        {this.renderNotice('info', <span>Current address: <em style={{ color: 'var(--t2)', fontSize: '12px' }}>{c.address}</em></span>)}
+        {this.renderNotice('info', <span>Current address on record: <em style={{ color: 'var(--t2)', fontSize: '12px' }}>{c.address}</em></span>)}
         <label class="field-label">Address Line 1 *</label><input class="field-input" placeholder="Flat/House, Building" />
         <label class="field-label">Address Line 2</label><input class="field-input" placeholder="Street, Locality" />
         <div class="row-2">
@@ -738,9 +760,33 @@ export class RekycCustomer {
         </div>
         <label class="field-label">State *</label>
         <select class="field-input"><option>Select State</option><option>Maharashtra</option><option>Delhi</option><option>Karnataka</option><option>Tamil Nadu</option><option>Gujarat</option><option>West Bengal</option><option>Telangana</option><option>Rajasthan</option></select>
-        <h3 class="sec-title">Upload Address Proof</h3>
-        {this.renderUpload('addr', 'Upload address proof', 'Address Proof')}
-        <button class="btn-primary" disabled={!this.uploadedDocs['addr']} onClick={() => this.go(this.minorOpt === 'both' ? 'mob_access' : 'success')}>Continue</button>
+
+        <h3 class="sec-title">Verify Address Proof</h3>
+        <p class="t2" style={{ marginBottom: '10px' }}>Choose how to verify your new address:</p>
+        {this.renderRadio(this.accessOpt === 'digilocker', 'Fetch via DigiLocker (Recommended)', 'Instant — fetches Aadhaar with updated address', () => this.accessOpt = 'digilocker')}
+        {this.renderRadio(this.accessOpt === 'upload', 'Upload document manually', 'Utility bill, bank statement, or lease agreement', () => this.accessOpt = 'upload')}
+
+        {this.accessOpt === 'upload' && (
+          <div style={{ marginTop: '10px' }}>
+            <label class="field-label">Document Type</label>
+            <select class="field-input"><option>Select</option><option>Aadhaar Card</option><option>Utility Bill</option><option>Bank Statement</option><option>Lease Agreement</option><option>Passport</option></select>
+            {this.renderUpload('addr', 'Upload address proof document', 'Address Proof')}
+          </div>
+        )}
+
+        <button class="btn-primary"
+          style={{ marginTop: '12px' }}
+          disabled={!this.accessOpt || (this.accessOpt === 'upload' && !this.uploadedDocs['addr'])}
+          onClick={() => {
+            if (this.accessOpt === 'digilocker') {
+              this.accessOpt = null;
+              this.go('digilocker');
+            } else {
+              this.go(this.minorOpt === 'both' ? 'mob_access' : 'success');
+            }
+          }}>
+          {this.accessOpt === 'digilocker' ? 'Open DigiLocker →' : 'Continue'}
+        </button>
       </div>
     );
 
@@ -840,13 +886,40 @@ export class RekycCustomer {
         <h3 class="sec-title">Reason for Re-KYC</h3>
         <div class="hint" style={{ marginBottom: '8px' }}>Select all that apply.</div>
         {KYC_REASONS.map(r => this.renderChk(`r_${r.key}`, false, <div><div class="chk-label">{r.label}</div><div class="chk-sub">{r.sub}</div></div>))}
+
+        {this.consents['r_constitution'] && (
+          <div class="constitution-selector">
+            <label class="field-label">New Constitution Type *</label>
+            <select class="field-input" onChange={(e: any) => { this.newConstitution = e.target.value; }}>
+              <option value="">Select new constitution</option>
+              <option value="Individual">Individual</option>
+              <option value="Sole Proprietorship">Sole Proprietorship</option>
+              <option value="HUF">Hindu Undivided Family (HUF)</option>
+              <option value="Partnership Firm">Partnership Firm</option>
+              <option value="Company">Company (Private / Public)</option>
+              <option value="Trust">Trust / Society</option>
+              <option value="AOP / BOI">AOP / Body of Individuals</option>
+            </select>
+            {this.newConstitution && (
+              <div class="notice info" style={{ marginTop: '8px' }}>
+                <div class="notice-icon">ℹ</div>
+                <p>For <strong>{this.newConstitution}</strong>, you will need to provide a matching PAN card in the next step.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <h3 class="sec-title">Steps to Complete</h3>
         <div class="step-list">
           {['PAN Verification', 'Aadhaar Validation', 'Document Upload', 'Video KYC'].map((s, i) =>
             <div class={{ 'step-item': true, active: i === 0 }}><div class="step-dot">{i + 1}</div><span>{s}</span></div>
           )}
         </div>
-        <button class="btn-primary" onClick={() => this.go('full_pan')}>Begin Verification</button>
+        <button class="btn-primary"
+          disabled={this.consents['r_constitution'] && !this.newConstitution}
+          onClick={() => this.go('full_pan')}>
+          Begin Verification
+        </button>
       </div>
     );
 
@@ -875,9 +948,20 @@ export class RekycCustomer {
         {this.panError && <div class="field-error">{this.panError}</div>}
 
         <button class="btn-primary" style={{ marginTop: '8px' }}
-          disabled={!validPan(this.panNum) || !this.panName.trim() || !this.panDob}
-          onClick={() => this.verifyPan()}>
-          Verify PAN
+          disabled={!validPan(this.panNum) || !this.panName.trim() || !this.panDob || this.simLoading}
+          onClick={async () => {
+            // Validate first — if error, show immediately
+            const pan = this.panNum.toUpperCase();
+            if (!validPan(pan) || !this.panName.trim() || !this.panDob) { this.verifyPan(); return; }
+            // Show realistic loader before result
+            this.simLoading = true;
+            await new Promise(r => setTimeout(r, 1800));
+            this.simLoading = false;
+            this.verifyPan();
+          }}>
+          {this.simLoading
+            ? <span class="btn-loading"><span class="btn-spinner" />Verifying with NSDL...</span>
+            : 'Verify PAN'}
         </button>
       </div>
     );
@@ -927,28 +1011,41 @@ export class RekycCustomer {
             <label class="field-label" style={{ marginTop: '12px' }}>Aadhaar Number *</label>
             <input class={{ 'field-input': true, 'field-err': !!this.aadhaarError }}
               placeholder="XXXX  XXXX  XXXX" maxLength={14} inputMode="numeric"
+              type="password"
               value={this.aadhaarNum}
               onInput={(e: any) => {
                 const raw = e.target.value.replace(/\D/g,'').slice(0,12);
                 this.aadhaarNum = raw.replace(/(\d{4})(\d{0,4})(\d{0,4})/,'$1 $2 $3').trim();
                 this.aadhaarError = '';
               }} />
+            <div class="aadhaar-preview">
+              {(() => {
+                const digits = this.aadhaarNum.replace(/\s/g,'');
+                if (digits.length === 0) return <span class="hint">Aadhaar number will be masked as you type</span>;
+                const last4 = digits.slice(-4);
+                const maskedPart = 'XXXX XXXX ';
+                return <span style={{ fontFamily: 'monospace', letterSpacing: '2px', color: 'var(--t2)' }}>
+                  {digits.length >= 4 ? maskedPart : ''}{last4}
+                </span>;
+              })()}
+            </div>
             {this.aadhaarError && <div class="field-error">{this.aadhaarError}</div>}
             {!this.aadhaarError && this.aadhaarNum.replace(/\s/g,'').length === 12 &&
               <div class="hint" style={{ color: 'var(--acc)' }}>✓ Valid Aadhaar number</div>}
           </div>
         )}
-        <button class="btn-primary" style={{ marginTop: '12px' }} disabled={!this.aadhaarMethod}
-          onClick={() => {
+        <button class="btn-primary" style={{ marginTop: '12px' }}
+          disabled={!this.aadhaarMethod || this.otpSending}
+          onClick={async () => {
             if (this.aadhaarMethod === 'otp') {
               if (!this.validateAadhaar()) return;
-              this.startResendCooldown();
-              this.go('full_aadhaar_otp');
+              this.triggerOtp(() => this.go('full_aadhaar_otp'));
             } else {
               this.go('digilocker');
             }
           }}>
-          {this.aadhaarMethod === 'digilocker' ? 'Open DigiLocker' : 'Send Aadhaar OTP'}
+          {this.otpSending ? <span class="btn-loading"><span class="btn-spinner" />Sending OTP...</span>
+            : this.aadhaarMethod === 'digilocker' ? 'Open DigiLocker' : 'Send Aadhaar OTP'}
         </button>
       </div>
     );
@@ -964,7 +1061,13 @@ export class RekycCustomer {
           )}
         </div>
         {this.digilockerLoading
-          ? <div class="digi-loading"><div class="upload-spinner" style={{ borderTopColor: 'var(--pri)', borderColor: 'var(--brd)' }} /> Verifying with DigiLocker...</div>
+          ? <div class="digi-loading">
+              <div class="upload-spinner" style={{ borderTopColor: 'var(--pri)', borderColor: 'var(--brd)' }} />
+              <div>
+                <div style={{ fontWeight: '600', marginBottom: '4px' }}>Connecting to DigiLocker...</div>
+                <div class="hint tc" style={{ marginTop: '0' }}>You will be redirected to the government portal</div>
+              </div>
+            </div>
           : <button class="btn-primary" onClick={async () => {
               this.digilockerLoading = true;
               try {
@@ -973,18 +1076,19 @@ export class RekycCustomer {
                   // Real OAuth — redirect to DigiLocker
                   window.location.href = result.authUrl;
                 } else if (result.demo) {
-                  // DigiLocker not configured — simulate success
+                  // DigiLocker not configured — simulate with realistic loader
+                  await new Promise(r => setTimeout(r, 2500));
                   this.digilockerVerified = true;
                   this.digilockerName = c.name;
                   this.digilockerDob = c.dob;
                   this.go('digilocker_result');
                 } else {
-                  this.showToast(result.error || 'DigiLocker unavailable', 'err');
+                  this.digilockerLoading = false;
+                  this.showToast(result.error || 'DigiLocker unavailable. Please try Aadhaar OTP instead.', 'err');
                 }
               } catch(e) {
-                this.showToast('Failed to connect. Please try again.', 'err');
-              } finally {
                 this.digilockerLoading = false;
+                this.showToast('Failed to connect. Please try again.', 'err');
               }
             }}>
             Open DigiLocker →
@@ -1019,9 +1123,9 @@ export class RekycCustomer {
         <h3 class="sec-title">Aadhaar OTP Verification</h3>
         <p class="t2">OTP sent to the mobile linked with Aadhaar <strong>{this.aadhaarNum}</strong></p>
         {this.renderOtp('adho')}
-        {this.renderOtpFooter('adho', 'Aadhaar-linked mobile', c.mobile)}
+        {this.renderOtpFooter('adho', this.maskedEnteredMobile, this.e164Mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('adho') || this.otpLocked}
-          onClick={() => this.verifyOtpCode('adho', c.mobile, () => this.go('full_doc'))}>
+          onClick={() => this.verifyOtpCode('adho', this.e164Mobile, () => this.go('full_doc'))}>
           Verify Aadhaar
         </button>
       </div>

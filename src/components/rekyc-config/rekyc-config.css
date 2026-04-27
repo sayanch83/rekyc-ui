@@ -1,0 +1,77 @@
+/* ── Layout ── */
+.cfg-wrap{min-height:100vh;background:#F0F4F8;font-family:'DM Sans',sans-serif}
+
+/* ── Header ── */
+.cfg-header{background:#0D1F35;color:#fff;padding:14px 28px;display:flex;align-items:center;gap:14px}
+.cfg-logo{width:38px;height:38px;background:#074994;border-radius:8px;display:flex;align-items:center;justify-content:center;font:800 15px 'Outfit',sans-serif;flex-shrink:0}
+.cfg-title{font:700 16px 'Outfit',sans-serif}
+.cfg-sub{font-size:12px;opacity:.65;margin-top:2px}
+.cfg-links{margin-left:auto;display:flex;gap:8px}
+.cfg-link-btn{padding:7px 16px;border-radius:8px;background:#074994;color:#fff;text-decoration:none;font:600 12px 'Outfit',sans-serif;transition:background .15s}
+.cfg-link-btn:hover{background:#3067A6}
+.cfg-link-btn.outline{background:transparent;border:1.5px solid rgba(255,255,255,.3);color:#fff}
+.cfg-link-btn.outline:hover{background:rgba(255,255,255,.08)}
+
+/* ── Body ── */
+.cfg-body{display:grid;grid-template-columns:1fr 340px;gap:20px;padding:24px 28px;max-width:1100px;margin:0 auto}
+
+/* ── Main form ── */
+.cfg-main{display:flex;flex-direction:column;gap:16px}
+.cfg-section{background:#fff;border-radius:12px;border:1px solid #E2E8F0;padding:20px 22px}
+.cfg-section-title{font:700 14px 'Outfit',sans-serif;color:#0D1F35;margin-bottom:2px}
+.cfg-section-sub{font-size:12px;color:#64748B;margin-bottom:16px}
+.cfg-select{width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;color:#1C2B3A;background:#fff;cursor:pointer;outline:none}
+.cfg-select:focus{border-color:#074994}
+
+/* ── Fields ── */
+.cfg-field{margin-bottom:14px}
+.cfg-field:last-child{margin-bottom:0}
+.cfg-label{font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px}
+.cfg-hint{font-size:11px;color:#94A3B8;margin-bottom:5px}
+.cfg-input{width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;color:#1C2B3A;background:#fff;outline:none;transition:border-color .15s;box-sizing:border-box}
+.cfg-input:focus{border-color:#074994;box-shadow:0 0 0 3px rgba(7,73,148,.08)}
+.cfg-mobile-wrap{display:flex;align-items:center;border:1.5px solid #E2E8F0;border-radius:8px;overflow:hidden;background:#fff;transition:border-color .15s}
+.cfg-mobile-wrap:focus-within{border-color:#074994;box-shadow:0 0 0 3px rgba(7,73,148,.08)}
+.cfg-prefix{padding:0 12px;font-size:13px;font-weight:600;color:#475569;background:#F8FAFC;border-right:1.5px solid #E2E8F0;height:42px;display:flex;align-items:center;flex-shrink:0}
+.cfg-mobile{border:none !important;box-shadow:none !important;flex:1}
+.cfg-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* ── Actions ── */
+.cfg-actions{margin-top:20px}
+.cfg-btn-save{width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#074994,#3067A6);color:#fff;font:700 14px 'Outfit',sans-serif;cursor:pointer;transition:all .15s}
+.cfg-btn-save:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.cfg-btn-save:disabled{opacity:.6;cursor:not-allowed}
+.cfg-success{margin-top:10px;padding:10px 14px;background:#E6F5F0;border-radius:8px;font-size:13px;font-weight:600;color:#0B7A5B;text-align:center}
+.cfg-error{padding:10px 14px;background:#FDE8E8;border-radius:8px;font-size:12.5px;color:#900909;margin-top:8px}
+
+/* ── Loading ── */
+.cfg-loading{display:flex;align-items:center;gap:12px;padding:20px;background:#fff;border-radius:12px;color:#64748B;font-size:13px;border:1px solid #E2E8F0}
+.cfg-spinner{width:18px;height:18px;border:2px solid #E2E8F0;border-top-color:#074994;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Sidebar cards ── */
+.cfg-sidebar{display:flex;flex-direction:column;gap:14px}
+.cfg-card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:18px 20px}
+.cfg-card-title{font:700 13px 'Outfit',sans-serif;color:#0D1F35;margin-bottom:4px}
+.cfg-card-sub{font-size:12px;color:#64748B;margin-bottom:12px;line-height:1.5}
+.cfg-card-danger{border-color:rgba(144,9,9,.15)}
+
+/* ── Steps ── */
+.cfg-steps{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.cfg-step{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:#475569;line-height:1.4}
+.cfg-step strong{color:#0D1F35;display:block}
+.step-num{width:22px;height:22px;border-radius:50%;background:#074994;color:#fff;font:700 11px 'Outfit',sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+
+/* ── Quick links ── */
+.cfg-quick-link{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;text-decoration:none;margin-bottom:8px;transition:all .15s}
+.cfg-quick-link:last-child{margin-bottom:0}
+.cfg-quick-link:hover{background:#EBF2FB;border-color:#ACC2DB}
+.ql-icon{font-size:18px;flex-shrink:0}
+.ql-title{font-size:13px;font-weight:600;color:#1C2B3A}
+.ql-url{font-size:10.5px;color:#94A3B8;margin-top:1px;word-break:break-all}
+.ql-arrow{font-size:18px;color:#94A3B8;margin-left:auto;flex-shrink:0}
+
+/* ── Reset button ── */
+.cfg-btn-reset{width:100%;padding:10px;border-radius:8px;border:1.5px solid rgba(144,9,9,.25);background:transparent;color:#900909;font:700 13px 'Outfit',sans-serif;cursor:pointer;transition:all .15s;margin-top:4px}
+.cfg-btn-reset:hover:not(:disabled){background:#FDE8E8}
+.cfg-btn-reset:disabled{opacity:.5;cursor:not-allowed}
