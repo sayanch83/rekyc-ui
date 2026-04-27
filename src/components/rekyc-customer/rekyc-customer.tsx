@@ -95,9 +95,10 @@ export class RekycCustomer {
   @State() digilockerLoading = false;
   @State() newConstitution = '';
   @State() simLoading = false;
-  @State() linkToken = '';           // token from SMS link
-  @State() linkError = '';           // shown if token invalid/expired
-  @State() tokenValidating = false;  // spinner on browser screen // generic simulated loading state
+  @State() linkToken = '';
+  @State() linkError = '';
+  @State() tokenValidating = false;
+  @State() tokenMobileLast4 = ''; // last 4 of mobile from token — for validation // generic simulated loading state
 
   private sessionTimer: any;
   private cooldownTimer: any;
@@ -118,12 +119,14 @@ export class RekycCustomer {
           const result = await validateLinkToken(token);
           if (result.valid && result.custId) {
             (this as any).customerId = result.custId;
+            // Store last4 from token's mobile for validation on submit
+            if (result.maskedMobile) {
+              this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
+            }
           }
-          // Whether valid or not, show browser screen — full validation happens on mobile submit
           this.screen = 'browser';
           this.hist   = ['browser'];
         } catch(e) {
-          // Network error — still show browser screen, validate on submit
           this.screen = 'browser';
           this.hist   = ['browser'];
         }
@@ -248,13 +251,10 @@ export class RekycCustomer {
       return false;
     }
 
-    // Token flow — verify the entered mobile matches the token's registered mobile
-    // We do this by checking last 4 digits against what's in the token
-    // Full mobile validation happens via OTP delivery — wrong number = no OTP received
-    if (this.linkToken && this.cust) {
-      const tokenLast4 = this.cust.mobile.replace(/\D/g,'').slice(-4);
+    // Token flow — compare last 4 digits against what's in the token
+    if (this.linkToken && this.tokenMobileLast4) {
       const enteredLast4 = digits.slice(-4);
-      if (tokenLast4 !== enteredLast4) {
+      if (this.tokenMobileLast4 !== enteredLast4) {
         this.mobileError = 'The mobile number you entered does not match the number registered for this link.';
         return false;
       }
