@@ -104,22 +104,22 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
+    // Use a local variable to track the resolved customer ID
+    // Never rely on this.customerId reading back after mutation — Prop timing is unreliable
+    let resolvedCustId = this.customerId; // starts as 'KYC-4528' default
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const token  = params.get('token');
       const urlId  = params.get('id') || params.get('custId');
 
       if (token) {
-        // Store token — validate mobile match later when customer submits number
-        // Don't pre-validate here as it causes false failures on cold starts
         this.linkToken = token;
-
-        // Get custId from token so we load the right customer
         try {
           const result = await validateLinkToken(token);
           if (result.valid && result.custId) {
-            this.customerId = result.custId;
-            // Store last4 from token's mobile for validation on submit
+            resolvedCustId = result.custId;        // ← local var updated
+            this.customerId = result.custId;        // ← Prop updated for rest of lifecycle
             if (result.maskedMobile) {
               this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
             }
@@ -133,6 +133,7 @@ export class RekycCustomer {
         window.history.replaceState({}, '', '/customer');
 
       } else if (urlId) {
+        resolvedCustId = urlId;
         this.customerId = urlId;
         window.history.replaceState({}, '', '/customer');
       }
@@ -143,7 +144,7 @@ export class RekycCustomer {
       if (dlVerified) {
         this.digilockerLoading = true;
         try {
-          const status = await checkDigilockerStatus(this.customerId);
+          const status = await checkDigilockerStatus(resolvedCustId);
           if (status.verified) {
             this.digilockerVerified = true;
             this.digilockerName = status.name || '';
@@ -160,7 +161,8 @@ export class RekycCustomer {
       }
     }
 
-    try { this.cust = await fetchCustomer(this.customerId); }
+    // Always use resolvedCustId — never this.customerId — to guarantee correct customer loads
+    try { this.cust = await fetchCustomer(resolvedCustId); }
     catch (e) { console.error('Failed to load customer:', e); }
   }
   disconnectedCallback() {
