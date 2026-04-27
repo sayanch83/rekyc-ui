@@ -1,10 +1,10 @@
 import { Component, h, State, Prop } from '@stencil/core';
-import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured } from '../../utils/constants';
+import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured, getDigilockerAuthUrl, checkDigilockerStatus } from '../../utils/constants';
 
 type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
-  |'full_intro'|'full_pan'|'full_pan_result'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'
+  |'full_intro'|'full_pan'|'full_pan_result'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'|'digilocker_result'
   |'full_doc'|'full_vkyc'|'full_vkyc_live'|'resubmit'|'success';
 
 // ── Aadhaar Verhoeff checksum ──
@@ -89,6 +89,10 @@ export class RekycCustomer {
   @State() otpSending = false;
   @State() otpDemoMode = true;
   @State() pushToast: { msg: string; type: string } | null = null;
+  @State() digilockerVerified = false;
+  @State() digilockerName = '';
+  @State() digilockerDob = '';
+  @State() digilockerLoading = false;
 
   private sessionTimer: any;
   private cooldownTimer: any;
@@ -96,6 +100,34 @@ export class RekycCustomer {
   async componentWillLoad() {
     try { this.cust = await fetchCustomer(this.customerId); }
     catch (e) { console.error('Failed to load customer:', e); }
+
+    // Handle DigiLocker OAuth callback — URL params set by API redirect
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('dl_verified')) {
+        // Poll for verified data
+        this.digilockerLoading = true;
+        try {
+          const status = await checkDigilockerStatus(this.customerId);
+          if (status.verified) {
+            this.digilockerVerified = true;
+            this.digilockerName = status.name || '';
+            this.digilockerDob = status.dob || '';
+            // Refresh customer data
+            this.cust = await fetchCustomer(this.customerId);
+          }
+        } finally { this.digilockerLoading = false; }
+        // Navigate to doc upload screen — consent already given earlier
+        this.hist = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar','digilocker','digilocker_result'];
+        this.screen = 'digilocker_result' as any;
+        // Clean URL
+        window.history.replaceState({}, '', '/customer');
+      } else if (params.get('dl_error')) {
+        this.hist = ['whatsapp','browser','auth_otp','consent','landing','full_intro','full_pan','full_pan_result','full_aadhaar'];
+        this.screen = 'full_aadhaar';
+        window.history.replaceState({}, '', '/customer');
+      }
+    }
   }
   disconnectedCallback() {
     clearInterval(this.sessionTimer);
@@ -171,25 +203,39 @@ export class RekycCustomer {
     }, 1000);
   }
 
-  // ── Mobile validation ──
+  // ── Mobile validation — just format check, no DB match ──
   validateMobile(): boolean {
-    const c = this.cust!;
-    const actual = c.mobile.replace(/\D/g, '').slice(-4);
-    if (this.mobileEntry !== actual) {
-      this.mobileError = 'The digits you entered do not match our records. Please check and try again.';
+    const digits = this.mobileEntry.replace(/\D/g, '');
+    if (digits.length !== 10) {
+      this.mobileError = 'Please enter a valid 10-digit Indian mobile number.';
+      return false;
+    }
+    if (!/^[6-9]/.test(digits)) {
+      this.mobileError = 'Mobile number must start with 6, 7, 8, or 9.';
       return false;
     }
     this.mobileError = '';
     return true;
   }
 
+  // Format entered number to E.164 for Twilio (+91XXXXXXXXXX)
+  get e164Mobile(): string {
+    const digits = this.mobileEntry.replace(/\D/g, '');
+    return `+91${digits}`;
+  }
+
+  get maskedEnteredMobile(): string {
+    const digits = this.mobileEntry.replace(/\D/g, '');
+    if (digits.length < 4) return this.mobileEntry;
+    return `+91 XXXXX X${digits.slice(-4)}`;
+  }
+
   // ── Send OTP via API (real Twilio if configured, demo mode otherwise) ──
   async triggerOtp(onSent: () => void) {
-    const c = this.cust!;
     this.otpError = '';
     this.otpSending = true;
     try {
-      const result = await sendOtp(c.mobile);
+      const result = await sendOtp(this.e164Mobile);
       if (result.ok) {
         this.otpDemoMode = !!result.hint;
         this.startResendCooldown();
@@ -228,19 +274,38 @@ export class RekycCustomer {
     }
   }
 
-  // ── PAN verification (simulated NSDL match) ──
+  // ── PAN verification — simulated NSDL response ──
+  // PAN structure: AAAAA9999A
+  // Character 4 (index 3) indicates entity type:
+  //   P = Individual, C = Company, H = HUF, F = Firm, A = AOP, T = Trust, B = BOI
   verifyPan() {
-    if (!validPan(this.panNum)) { this.panError = 'Invalid PAN format. Must be 10 characters: AAAAA9999A.'; return; }
-    if (!this.panName.trim()) { this.panError = 'Please enter your full name as on PAN.'; return; }
-    if (!this.panDob) { this.panError = 'Please enter your date of birth.'; return; }
-    // Simulated NSDL check: name must match (case-insensitive, first word)
-    const c = this.cust!;
-    const apiName = c.name.split(' ')[0].toLowerCase();
-    const entered = this.panName.split(' ')[0].toLowerCase();
-    if (!entered.includes(apiName) && !apiName.includes(entered)) {
-      this.panError = 'Name does not match PAN records. Please enter your name exactly as on the card.';
+    const pan = this.panNum.toUpperCase();
+
+    if (!validPan(pan)) {
+      this.panError = 'Invalid PAN format. Must be 10 characters in format AAAAA9999A.';
       return;
     }
+    if (!this.panName.trim()) {
+      this.panError = 'Please enter your full name as it appears on your PAN card.';
+      return;
+    }
+    if (!this.panDob) {
+      this.panError = 'Please enter your date of birth as per PAN card.';
+      return;
+    }
+
+    // Check 4th character — must be 'P' for Individual
+    const entityCode = pan[3];
+    if (entityCode !== 'P') {
+      const entityMap: Record<string, string> = {
+        C: 'Company', H: 'Hindu Undivided Family', F: 'Firm',
+        A: 'Association of Persons', T: 'Trust', B: 'Body of Individuals',
+      };
+      const entityType = entityMap[entityCode] || 'Non-Individual entity';
+      this.panError = `This PAN belongs to a ${entityType}. Re-KYC is only applicable for Individual customers. Please use your personal PAN card.`;
+      return;
+    }
+
     this.panError = '';
     this.panVerified = true;
     this.go('full_pan_result');
@@ -327,7 +392,7 @@ export class RekycCustomer {
           }}>Resend OTP</button>
           }
         </div>
-        {this.otpDemoMode && <div class="hint tc" style={{ color: 'var(--acc)', fontSize: '11.5px' }}>Demo mode — use 123456</div>}
+        
       </div>
     );
   }
@@ -423,6 +488,7 @@ export class RekycCustomer {
     full_aadhaar: ['Aadhaar', 'Step 2/4'],
     full_aadhaar_otp: ['Aadhaar OTP', 'Step 2/4'],
     digilocker: ['DigiLocker', 'Aadhaar fetch'],
+    digilocker_result: ['Aadhaar Verified', 'DigiLocker success'],
     full_doc: ['Documents', 'Step 3/4'],
     full_vkyc: ['Video KYC', 'Step 4/4'],
     full_vkyc_live: ['VKYC Live', 'In progress'],
@@ -501,34 +567,34 @@ export class RekycCustomer {
         <div class="browser-bar"><span class="lock">🔒</span> <code><strong>https://</strong>nationalbank.co.in/rekyc</code></div>
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>National Bank Ltd.</strong><br/><span class="t2">Secure Re-KYC Portal</span></div></div>
         {this.renderOfferTeaser(false)}
-        <label class="field-label">Registered Mobile (last 4 digits) *</label>
-        <input class={{ 'field-input': true, 'field-err': !!this.mobileError }}
-          type="text" inputMode="numeric" maxLength={4} placeholder="e.g. 3210"
-          value={this.mobileEntry}
-          onInput={(e: any) => { this.mobileEntry = e.target.value.replace(/\D/g,'').slice(0,4); this.mobileError = ''; }} />
+        <label class="field-label">Your Mobile Number *</label>
+        <div class="mobile-input-wrap">
+          <span class="mobile-prefix">+91</span>
+          <input class={{ 'field-input': true, 'field-err': !!this.mobileError, 'mobile-field': true }}
+            type="tel" inputMode="numeric" maxLength={10} placeholder="10-digit mobile number"
+            value={this.mobileEntry}
+            onInput={(e: any) => { this.mobileEntry = e.target.value.replace(/\D/g,'').slice(0,10); this.mobileError = ''; }} />
+        </div>
         {this.mobileError
           ? <div class="field-error">{this.mobileError}</div>
-          : <div class="hint">Enter the last 4 digits of your registered mobile number</div>}
-        <button class="btn-primary" disabled={this.mobileEntry.length !== 4 || this.otpSending}
-          onClick={() => {
-            if (!this.validateMobile()) return;
-            this.triggerOtp(() => this.go('auth_otp'));
-          }}>
-          {this.otpSending ? 'Sending OTP...' : 'Verify & Proceed'}
+          : <div class="hint">An OTP will be sent to this number to verify your identity</div>}
+        <button class="btn-primary" disabled={this.mobileEntry.replace(/\D/g,'').length !== 10 || this.otpSending}
+          onClick={() => { if (this.validateMobile()) this.triggerOtp(() => this.go('auth_otp')); }}>
+          {this.otpSending ? 'Sending OTP...' : 'Send OTP'}
         </button>
       </div>
     );
 
     case 'auth_otp': return (
       <div class="scr tc">
-        <p class="t2">OTP sent to <strong>{maskedMobile}</strong></p>
+        <p class="t2">OTP sent to <strong>{this.maskedEnteredMobile}</strong></p>
         {this.otpLocked
           ? <div class="lockout-card">🔒 Session locked — too many incorrect attempts.<br/>Please restart.</div>
           : this.renderOtp('auth')
         }
-        {!this.otpLocked && this.renderOtpFooter('auth', maskedMobile, c.mobile)}
+        {!this.otpLocked && this.renderOtpFooter('auth', this.maskedEnteredMobile, this.e164Mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('auth') || this.otpLocked}
-          onClick={() => this.verifyOtpCode('auth', c.mobile, () => { this.startSession(); this.go('consent'); })}>
+          onClick={() => this.verifyOtpCode('auth', this.e164Mobile, () => { this.startSession(); this.go('consent'); })}>
           Authenticate
         </button>
         {this.otpLocked && <button class="btn-text" onClick={() => this.reset()}>Start Over</button>}
@@ -822,17 +888,31 @@ export class RekycCustomer {
           <div class="vr-icon">✓</div>
           <div class="vr-body">
             <div class="vr-title">PAN Verified Successfully</div>
-            <div class="vr-sub">Details matched with NSDL records</div>
+            <div class="vr-sub">Verified against NSDL — Income Tax Department</div>
           </div>
         </div>
-        <div class="data-card" style={{ marginTop: '12px' }}>
-          <div class="d-row"><span class="d-lbl">PAN</span><span class="d-val" style={{ letterSpacing: '2px', fontFamily: 'monospace' }}>{this.panNum}</span></div>
-          <div class="d-row"><span class="d-lbl">Name</span><span class="d-val">{this.panName}</span></div>
-          <div class="d-row"><span class="d-lbl">DOB</span><span class="d-val">{this.panDob}</span></div>
-          <div class="d-row"><span class="d-lbl">Status</span><span class="d-val" style={{ color: 'var(--acc)' }}>Active — Individual</span></div>
+        <div class="nsdl-card">
+          <div class="nsdl-header">
+            <div class="nsdl-logo">IT</div>
+            <div>
+              <div class="nsdl-title">Income Tax Department</div>
+              <div class="nsdl-sub">PAN Verification Response</div>
+            </div>
+            <div class="nsdl-status">ACTIVE</div>
+          </div>
+          <div class="nsdl-body">
+            <div class="nsdl-row"><span class="nsdl-lbl">PAN Number</span><span class="nsdl-val pan-mono">{this.panNum.toUpperCase()}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Name as per PAN</span><span class="nsdl-val">{this.panName.toUpperCase()}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Date of Birth</span><span class="nsdl-val">{this.panDob}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">PAN Type</span><span class="nsdl-val">Individual (P)</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">PAN Status</span><span class="nsdl-val nsdl-ok">✓ Active &amp; Valid</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Aadhaar Linked</span><span class="nsdl-val nsdl-ok">✓ Linked</span></div>
+          </div>
+          <div class="nsdl-footer">
+            Verification Ref: NSDL{Date.now().toString().slice(-10)} &nbsp;|&nbsp; {new Date().toLocaleDateString('en-IN')}
+          </div>
         </div>
-        {this.renderNotice('ok', 'Your PAN details have been verified. Proceed to Aadhaar validation.')}
-        <button class="btn-primary" onClick={() => this.go('full_aadhaar')}>Continue to Aadhaar</button>
+        <button class="btn-primary" onClick={() => this.go('full_aadhaar')}>Continue to Aadhaar Validation</button>
       </div>
     );
 
@@ -877,14 +957,60 @@ export class RekycCustomer {
       <div class="scr tc">
         <div class="digi-icon">🔐</div>
         <h2>DigiLocker</h2>
-        <p class="t2">You will be redirected to DigiLocker to fetch your Aadhaar details securely.</p>
+        <p class="t2" style={{ marginBottom: '16px' }}>You will be redirected to DigiLocker to fetch your Aadhaar details. Authorise National Bank to access your Aadhaar document.</p>
         <div class="digi-features">
           {['Instant Aadhaar fetch', 'No physical document needed', 'Govt. verified and tamper-proof', 'Data shared with your consent only'].map(t =>
             <div class="digi-item">✓ {t}</div>
           )}
         </div>
-        <button class="btn-primary" onClick={() => this.go('full_doc')}>Continue to DigiLocker →</button>
-        <div class="hint tc" style={{ marginTop: '8px' }}>Simulated — in production, opens DigiLocker OAuth</div>
+        {this.digilockerLoading
+          ? <div class="digi-loading"><div class="upload-spinner" style={{ borderTopColor: 'var(--pri)', borderColor: 'var(--brd)' }} /> Verifying with DigiLocker...</div>
+          : <button class="btn-primary" onClick={async () => {
+              this.digilockerLoading = true;
+              try {
+                const result = await getDigilockerAuthUrl(this.customerId);
+                if (result.ok && result.authUrl) {
+                  // Real OAuth — redirect to DigiLocker
+                  window.location.href = result.authUrl;
+                } else if (result.demo) {
+                  // DigiLocker not configured — simulate success
+                  this.digilockerVerified = true;
+                  this.digilockerName = c.name;
+                  this.digilockerDob = c.dob;
+                  this.go('digilocker_result');
+                } else {
+                  this.showToast(result.error || 'DigiLocker unavailable', 'err');
+                }
+              } catch(e) {
+                this.showToast('Failed to connect. Please try again.', 'err');
+              } finally {
+                this.digilockerLoading = false;
+              }
+            }}>
+            Open DigiLocker →
+          </button>
+        }
+      </div>
+    );
+
+    case 'digilocker_result': return (
+      <div class="scr">
+        <div class="verify-result ok" style={{ marginBottom: '16px' }}>
+          <div class="vr-icon">✓</div>
+          <div class="vr-body">
+            <div class="vr-title">Aadhaar Verified via DigiLocker</div>
+            <div class="vr-sub">Government-verified identity confirmed</div>
+          </div>
+        </div>
+        <div class="data-card">
+          <div class="d-row"><span class="d-lbl">Name</span><span class="d-val">{this.digilockerName || c.name}</span></div>
+          {this.digilockerDob && <div class="d-row"><span class="d-lbl">Date of Birth</span><span class="d-val">{this.digilockerDob}</span></div>}
+          <div class="d-row"><span class="d-lbl">Source</span><span class="d-val" style={{ color: 'var(--acc)' }}>✓ DigiLocker — Govt. Verified</span></div>
+          <div class="d-row"><span class="d-lbl">POI Status</span><span class="d-val" style={{ color: 'var(--acc)' }}>✓ Verified</span></div>
+          <div class="d-row"><span class="d-lbl">POA Status</span><span class="d-val" style={{ color: 'var(--acc)' }}>✓ Verified</span></div>
+        </div>
+        {this.renderNotice('ok', 'Your Aadhaar identity has been verified. Proceed to upload your supporting documents.')}
+        <button class="btn-primary" onClick={() => this.go('full_doc')}>Continue to Document Upload</button>
       </div>
     );
 

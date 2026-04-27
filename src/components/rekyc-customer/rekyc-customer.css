@@ -238,3 +238,29 @@ select.field-input{appearance:none;cursor:pointer}
 .push-toast.ok{background:var(--acc-s);color:var(--acc);border-bottom:1px solid rgba(11,122,91,.15)}
 .push-toast.err{background:var(--dng-bg);color:var(--dng);border-bottom:1px solid rgba(144,9,9,.15)}
 .push-toast.info{background:var(--pri-bg);color:var(--pri);border-bottom:1px solid rgba(7,73,148,.15)}
+
+/* ── Mobile number input with +91 prefix ── */
+.mobile-input-wrap{display:flex;align-items:center;border:1.5px solid var(--brd);border-radius:10px;overflow:hidden;background:#fff;transition:border-color .15s}
+.mobile-input-wrap:focus-within{border-color:var(--pri)}
+.mobile-prefix{padding:0 12px;font-size:14px;font-weight:600;color:var(--txt);background:#F0F4F8;border-right:1.5px solid var(--brd);height:48px;display:flex;align-items:center;flex-shrink:0}
+.mobile-field{border:none !important;border-radius:0 !important;flex:1;margin:0 !important}
+.mobile-field:focus{outline:none}
+
+/* ── DigiLocker loading state ── */
+.digi-loading{display:flex;align-items:center;gap:10px;justify-content:center;padding:14px;color:var(--pri);font-size:13px;font-weight:600}
+
+/* ── NSDL verification card ── */
+.nsdl-card{border:1.5px solid #E2E8F0;border-radius:10px;overflow:hidden;margin:12px 0 14px}
+.nsdl-header{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#074994;color:#fff}
+.nsdl-logo{width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font:700 13px 'Outfit',sans-serif;flex-shrink:0}
+.nsdl-title{font:700 12.5px 'Outfit',sans-serif}
+.nsdl-sub{font-size:10px;opacity:.75;margin-top:1px}
+.nsdl-status{margin-left:auto;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.nsdl-body{padding:4px 0}
+.nsdl-row{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid #F8FAFC}
+.nsdl-row:last-child{border-bottom:none}
+.nsdl-lbl{font-size:11px;color:#64748B;font-weight:500}
+.nsdl-val{font-size:12.5px;font-weight:600;color:#1C2B3A;text-align:right}
+.nsdl-ok{color:#0B7A5B !important}
+.pan-mono{font-family:monospace;letter-spacing:2px}
+.nsdl-footer{padding:7px 14px;background:#F8FAFC;border-top:1px solid #E2E8F0;font-size:10px;color:#94A3B8}

@@ -179,3 +179,18 @@ export const FIREBASE_CONFIG = {
 export function firebaseConfigured(): boolean {
   return !!(FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey);
 }
+
+// ── DigiLocker ──
+export async function getDigilockerAuthUrl(custId: string): Promise<{ ok: boolean; authUrl?: string; demo?: boolean; error?: string }> {
+  try {
+    const r = await fetch(`${API}/api/digilocker/init?custId=${custId}`);
+    return r.json();
+  } catch(e) { return { ok: false, error: 'Network error' }; }
+}
+
+export async function checkDigilockerStatus(custId: string): Promise<{ verified: boolean; name?: string; dob?: string; gender?: string }> {
+  try {
+    const r = await fetch(`${API}/api/digilocker/status/${custId}`);
+    return r.json();
+  } catch(e) { return { verified: false }; }
+}
