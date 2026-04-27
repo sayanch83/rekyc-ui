@@ -143,12 +143,30 @@ export class RekycAnalytics {
   @State() view: 'zm' | 'rm' = 'zm';
   @State() expanded: Record<string, boolean> = {};
   @State() filterZone = 'all';
+  @State() liveTotal = 0;
+  @State() liveCompleted = 0;
+  @State() livePending = 0;
+  @State() liveRejected = 0;
+  @State() liveLoaded = false;
   private canvasTrend: HTMLCanvasElement;
   private canvasDoughnut: HTMLCanvasElement;
   private chartsLoaded = false;
 
-  componentDidLoad() { this.initCharts(); }
+  componentDidLoad() { this.initCharts(); this.loadLiveData(); }
   componentDidUpdate() { setTimeout(() => this.drawCharts(), 100); }
+
+  async loadLiveData() {
+    try {
+      const apiBase = (window as any).__REKYC_API__ || 'https://rekyc-work-production.up.railway.app';
+      const r = await fetch(`${apiBase}/api/customers`);
+      const customers: any[] = await r.json();
+      this.liveTotal     = customers.length;
+      this.liveCompleted = customers.filter(c => c.status === 'Completed').length;
+      this.livePending   = customers.filter(c => !['Completed','Rejected'].includes(c.status)).length;
+      this.liveRejected  = customers.filter(c => c.status === 'Rejected').length;
+      this.liveLoaded    = true;
+    } catch(e) { console.warn('Analytics live data failed:', e); }
+  }
 
   async initCharts() {
     if ((window as any).Chart) { this.chartsLoaded = true; this.drawCharts(); return; }
@@ -536,12 +554,21 @@ export class RekycAnalytics {
           <div class="ana-body">
             {/* Stat boxes */}
             <div class="stat-boxes-row">
-              {this.renderStatBox('Total KYC Due', t.total, '#074994', '#E8F0F8', '100%')}
-              {this.renderStatBox('Completed', t.completed, '#0B7A5B', '#E6F5F0', Math.round(t.completed/t.total*100) + '%')}
-              {this.renderStatBox('Pending', t.pending, '#B8860B', '#FFF8E6', Math.round(t.pending/t.total*100) + '%')}
-              {this.renderStatBox('Rejected', t.rejected, '#900909', '#FDE8E8', Math.round(t.rejected/t.total*100) + '%')}
+              {this.renderStatBox('Total KYC Due',
+                this.liveLoaded ? this.liveTotal : t.total,
+                '#074994','#E8F0F8','100%')}
+              {this.renderStatBox('Completed',
+                this.liveLoaded ? this.liveCompleted : t.completed,
+                '#0B7A5B','#E6F5F0', this.liveLoaded ? Math.round(this.liveCompleted/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.completed/t.total*100)+'%')}
+              {this.renderStatBox('Pending',
+                this.liveLoaded ? this.livePending : t.pending,
+                '#B8860B','#FFF8E6', this.liveLoaded ? Math.round(this.livePending/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.pending/t.total*100)+'%')}
+              {this.renderStatBox('Rejected',
+                this.liveLoaded ? this.liveRejected : t.rejected,
+                '#900909','#FDE8E8', this.liveLoaded ? Math.round(this.liveRejected/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.rejected/t.total*100)+'%')}
               {this.renderStatBox('High Risk', 92, '#6D28D9', '#F3E8FF', '8.5%')}
               {this.renderStatBox('Avg TAT', '4.2d', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
+              {this.liveLoaded && <div class="live-indicator">● Live</div>}
             </div>
 
             {/* Charts — taller */}

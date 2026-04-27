@@ -135,3 +135,6 @@
 .case-tat-legend{display:flex;align-items:center;gap:14px;padding:7px 12px;background:#FAFBFC;border-top:1px solid #F1F5F9;font-size:10.5px;flex-wrap:wrap}
 .case-tat-legend span{font-weight:600}
 .tat-sla{margin-left:auto;color:#94A3B8;font-weight:400}
+
+/* Live data indicator */
+.live-indicator{display:flex;align-items:center;padding:6px 12px;background:#E6F5F0;border-radius:8px;color:#0B7A5B;font-size:11px;font-weight:700;letter-spacing:.5px;border:1px solid rgba(11,122,91,.15)}

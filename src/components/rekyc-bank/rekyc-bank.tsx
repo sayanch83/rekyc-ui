@@ -3,7 +3,7 @@ import { Customer, UploadedDoc, fetchCustomers, fetchCustomer, reviewDocument, r
 
 @Component({ tag: 'rekyc-bank', styleUrl: 'rekyc-bank.css', shadow: false })
 export class RekycBank {
-  @State() page: 'dashboard' | 'analytics' = 'dashboard';
+  @State() page: 'dashboard' | 'analytics' | 'bulk' = 'dashboard';
   @State() customers: Customer[] = [];
   @State() selected: Customer | null = null;
   @State() filter = 'all';
@@ -407,16 +407,19 @@ export class RekycBank {
             <span class="sidebar-brand">National Bank</span>
           </div>
           <div class="sidebar-section">Re-KYC</div>
-          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>Dashboard</div>
-          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>Analytics</div>
+          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>📋 Dashboard</div>
+          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>📊 Analytics</div>
+          <div class={this.page === 'bulk' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'bulk'; }}>⬆ Bulk Upload</div>
           <div class="sidebar-section">Settings</div>
-          <div class="sidebar-item">Configuration</div>
+          <div class="sidebar-item" onClick={() => { window.open('/config','_blank'); }}>⚙ Configuration</div>
         </div>
 
         {/* Main content */}
         <div class="content-wrap">
           {this.page === 'analytics'
             ? <rekyc-analytics />
+            : this.page === 'bulk'
+            ? <rekyc-bulk />
             : this.renderDashboard(d, all, totalPending, totalCompleted, totalOverdue)
           }
         </div>

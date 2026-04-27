@@ -100,6 +100,16 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
+    // Check for customer ID in URL params (from SMS re-KYC link)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlId = params.get('id') || params.get('custId');
+      if (urlId) {
+        (this as any).customerId = urlId;
+        window.history.replaceState({}, '', '/customer');
+      }
+    }
+
     try { this.cust = await fetchCustomer(this.customerId); }
     catch (e) { console.error('Failed to load customer:', e); }
 
@@ -228,8 +238,11 @@ export class RekycCustomer {
 
   get maskedEnteredMobile(): string {
     const digits = this.mobileEntry.replace(/\D/g, '');
-    if (digits.length < 4) return this.mobileEntry;
-    return `+91 XXXXX X${digits.slice(-4)}`;
+    if (digits.length < 4) return `+91 ···· ${digits}`;
+    // Show first 2 digits, mask middle, show last 4: 98 XXXX 3210
+    const first2 = digits.slice(0, 2);
+    const last4  = digits.slice(-4);
+    return `+91 ${first2}XXXXXX${last4}`;
   }
 
   // ── Send OTP via API (real Twilio if configured, demo mode otherwise) ──
@@ -551,8 +564,6 @@ export class RekycCustomer {
 
   renderScreen() {
     const c = this.cust!;
-    const last4 = c.mobile.replace(/\D/g, '').slice(-4);
-    const maskedMobile = `+91 XXXXX X${last4}`;
 
     // ── Compute expiry status for documents ──
     const today = new Date();
@@ -658,7 +669,7 @@ export class RekycCustomer {
 
         <h3 class="sec-title">Contact &amp; Address</h3>
         <div class="data-card">
-          <div class="d-row"><span class="d-lbl">Mobile</span><span class="d-val">{maskedMobile}</span></div>
+          <div class="d-row"><span class="d-lbl">Mobile</span><span class="d-val">{this.maskedEnteredMobile}</span></div>
           <div class="d-row"><span class="d-lbl">Email</span><span class="d-val">{c.email}</span></div>
           <div class="d-row"><span class="d-lbl">Address</span><span class="d-val" style={{ fontSize: '12px' }}>{c.address}</span></div>
         </div>
@@ -792,7 +803,7 @@ export class RekycCustomer {
 
     case 'mob_access': return (
       <div class="scr">
-        {this.renderNotice('info', <span>Current registered mobile: <strong>{maskedMobile}</strong></span>)}
+        {this.renderNotice('info', <span>Current registered mobile: <strong>{this.maskedEnteredMobile}</strong></span>)}
         <h3 class="sec-title">Do you have access to your current number?</h3>
         {this.renderRadio(this.accessOpt === 'yes', 'Yes, I can receive OTP', 'Verify via OTP on both numbers', () => this.accessOpt = 'yes')}
         {this.renderRadio(this.accessOpt === 'no', "No, I don't have access", 'Alternate verification required', () => this.accessOpt = 'no')}
@@ -803,7 +814,7 @@ export class RekycCustomer {
     case 'mob_new': return (
       <div class="scr">
         <h3 class="sec-title">Enter New Mobile Number</h3>
-        <label class="field-label">Current Mobile</label><input class="field-input readonly" value={maskedMobile} readOnly />
+        <label class="field-label">Current Mobile</label><input class="field-input readonly" value={this.maskedEnteredMobile} readOnly />
         <label class="field-label">New Mobile Number *</label><input class="field-input" placeholder="Enter 10-digit number" maxLength={10} type="tel" />
         <button class="btn-primary" onClick={() => { this.startResendCooldown(); this.go('mob_otp_old'); }}>Send OTP to Current Number</button>
       </div>
@@ -811,11 +822,11 @@ export class RekycCustomer {
 
     case 'mob_otp_old': return (
       <div class="scr tc">
-        <p class="t2">Enter OTP sent to <strong>{maskedMobile}</strong></p>
+        <p class="t2">Enter OTP sent to <strong>{this.maskedEnteredMobile}</strong></p>
         {this.renderOtp('mold')}
-        {this.renderOtpFooter('mold', maskedMobile, c.mobile)}
+        {this.renderOtpFooter('mold', this.maskedEnteredMobile, this.e164Mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('mold') || this.otpLocked}
-          onClick={() => this.verifyOtpCode('mold', c.mobile, () => { this.startResendCooldown(); this.go('mob_otp_new'); })}>
+          onClick={() => this.verifyOtpCode('mold', this.e164Mobile, () => { this.startResendCooldown(); this.go('mob_otp_new'); })}>
           Verify &amp; Continue
         </button>
       </div>
@@ -1121,7 +1132,10 @@ export class RekycCustomer {
     case 'full_aadhaar_otp': return (
       <div class="scr tc">
         <h3 class="sec-title">Aadhaar OTP Verification</h3>
-        <p class="t2">OTP sent to the mobile linked with Aadhaar <strong>{this.aadhaarNum}</strong></p>
+        <p class="t2">OTP sent to the mobile linked with Aadhaar ending</p>
+        <p style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: '700', letterSpacing: '2px', color: 'var(--pri)', marginBottom: '16px' }}>
+          XXXX XXXX {this.aadhaarNum.replace(/\s/g,'').slice(-4)}
+        </p>
         {this.renderOtp('adho')}
         {this.renderOtpFooter('adho', this.maskedEnteredMobile, this.e164Mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('adho') || this.otpLocked}
@@ -1163,7 +1177,7 @@ export class RekycCustomer {
           <div class="vkyc-later-icon">📲</div>
           <div class="vkyc-later-text">
             <strong>Prefer to complete later?</strong><br/>
-            Link sent to <strong>{maskedMobile}</strong> and your email. Valid for <strong>3 days</strong>.
+            Link sent to <strong>{this.maskedEnteredMobile}</strong> and your email. Valid for <strong>3 days</strong>.
           </div>
         </div>
         <div class="vkyc-steps-note">
