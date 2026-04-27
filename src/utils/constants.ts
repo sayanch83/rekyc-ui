@@ -1,8 +1,8 @@
 // ── API base URL ──
 // At runtime, serve.mjs injects window.__REKYC_API__ via the HTML.
-// Falls back to same-origin /api (when API is co-hosted) or localhost for dev.
+// Falls back to production URL — never localhost (customers open links on their phones).
 export const API = (typeof window !== 'undefined' && (window as any).__REKYC_API__)
-  || 'http://localhost:4000';
+  || 'https://rekyc-work-production.up.railway.app';
 
 // ── Types ──
 export interface DocOnFile {
