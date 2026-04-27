@@ -6,18 +6,34 @@
  */
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
 export namespace Components {
+    interface RekycAnalytics {
+    }
     interface RekycApp {
     }
     interface RekycBank {
+    }
+    interface RekycBulk {
+    }
+    interface RekycConfig {
     }
     interface RekycCustomer {
         /**
           * @default 'KYC-4528'
          */
         "customerId": string;
+        /**
+          * @default ''
+         */
+        "linkToken": string;
     }
 }
 declare global {
+    interface HTMLRekycAnalyticsElement extends Components.RekycAnalytics, HTMLStencilElement {
+    }
+    var HTMLRekycAnalyticsElement: {
+        prototype: HTMLRekycAnalyticsElement;
+        new (): HTMLRekycAnalyticsElement;
+    };
     interface HTMLRekycAppElement extends Components.RekycApp, HTMLStencilElement {
     }
     var HTMLRekycAppElement: {
@@ -30,6 +46,18 @@ declare global {
         prototype: HTMLRekycBankElement;
         new (): HTMLRekycBankElement;
     };
+    interface HTMLRekycBulkElement extends Components.RekycBulk, HTMLStencilElement {
+    }
+    var HTMLRekycBulkElement: {
+        prototype: HTMLRekycBulkElement;
+        new (): HTMLRekycBulkElement;
+    };
+    interface HTMLRekycConfigElement extends Components.RekycConfig, HTMLStencilElement {
+    }
+    var HTMLRekycConfigElement: {
+        prototype: HTMLRekycConfigElement;
+        new (): HTMLRekycConfigElement;
+    };
     interface HTMLRekycCustomerElement extends Components.RekycCustomer, HTMLStencilElement {
     }
     var HTMLRekycCustomerElement: {
@@ -37,30 +65,47 @@ declare global {
         new (): HTMLRekycCustomerElement;
     };
     interface HTMLElementTagNameMap {
+        "rekyc-analytics": HTMLRekycAnalyticsElement;
         "rekyc-app": HTMLRekycAppElement;
         "rekyc-bank": HTMLRekycBankElement;
+        "rekyc-bulk": HTMLRekycBulkElement;
+        "rekyc-config": HTMLRekycConfigElement;
         "rekyc-customer": HTMLRekycCustomerElement;
     }
 }
 declare namespace LocalJSX {
+    interface RekycAnalytics {
+    }
     interface RekycApp {
     }
     interface RekycBank {
+    }
+    interface RekycBulk {
+    }
+    interface RekycConfig {
     }
     interface RekycCustomer {
         /**
           * @default 'KYC-4528'
          */
         "customerId"?: string;
+        /**
+          * @default ''
+         */
+        "linkToken"?: string;
     }
 
     interface RekycCustomerAttributes {
         "customerId": string;
+        "linkToken": string;
     }
 
     interface IntrinsicElements {
+        "rekyc-analytics": RekycAnalytics;
         "rekyc-app": RekycApp;
         "rekyc-bank": RekycBank;
+        "rekyc-bulk": RekycBulk;
+        "rekyc-config": RekycConfig;
         "rekyc-customer": Omit<RekycCustomer, keyof RekycCustomerAttributes> & { [K in keyof RekycCustomer & keyof RekycCustomerAttributes]?: RekycCustomer[K] } & { [K in keyof RekycCustomer & keyof RekycCustomerAttributes as `attr:${K}`]?: RekycCustomerAttributes[K] } & { [K in keyof RekycCustomer & keyof RekycCustomerAttributes as `prop:${K}`]?: RekycCustomer[K] };
     }
 }
@@ -68,8 +113,11 @@ export { LocalJSX as JSX };
 declare module "@stencil/core" {
     export namespace JSX {
         interface IntrinsicElements {
+            "rekyc-analytics": LocalJSX.IntrinsicElements["rekyc-analytics"] & JSXBase.HTMLAttributes<HTMLRekycAnalyticsElement>;
             "rekyc-app": LocalJSX.IntrinsicElements["rekyc-app"] & JSXBase.HTMLAttributes<HTMLRekycAppElement>;
             "rekyc-bank": LocalJSX.IntrinsicElements["rekyc-bank"] & JSXBase.HTMLAttributes<HTMLRekycBankElement>;
+            "rekyc-bulk": LocalJSX.IntrinsicElements["rekyc-bulk"] & JSXBase.HTMLAttributes<HTMLRekycBulkElement>;
+            "rekyc-config": LocalJSX.IntrinsicElements["rekyc-config"] & JSXBase.HTMLAttributes<HTMLRekycConfigElement>;
             "rekyc-customer": LocalJSX.IntrinsicElements["rekyc-customer"] & JSXBase.HTMLAttributes<HTMLRekycCustomerElement>;
         }
     }
