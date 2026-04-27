@@ -1,5 +1,5 @@
 import { Component, h, State, Prop } from '@stencil/core';
-import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl } from '../../utils/constants';
+import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured } from '../../utils/constants';
 
 type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
@@ -86,6 +86,9 @@ export class RekycCustomer {
   @State() uploadedDocs: Record<string, { name: string; fileName: string; preview?: string }> = {};
   @State() resubmitDocId = '';
   @State() resubmitReason = '';
+  @State() otpSending = false;
+  @State() otpDemoMode = true;
+  @State() pushToast: { msg: string; type: string } | null = null;
 
   private sessionTimer: any;
   private cooldownTimer: any;
@@ -121,6 +124,42 @@ export class RekycCustomer {
       if (remaining <= 0) { clearInterval(this.sessionTimer); this.reset(); }
       else if (remaining <= 2 * 60 * 1000) { this.sessionWarning = true; }
     }, 5000);
+    // Register for push notifications after session starts
+    this.registerPush();
+  }
+
+  // ── Firebase Push Registration ──
+  async registerPush() {
+    if (!firebaseConfigured()) return;
+    try {
+      const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js' as any);
+      const { getMessaging, getToken, onMessage } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging.js' as any);
+      const apps = getApps();
+      const app = apps.length ? apps[0] : initializeApp(FIREBASE_CONFIG);
+      const messaging = getMessaging(app);
+      const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      const vapidKey = (window as any).__FIREBASE_VAPID_KEY__;
+      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg });
+      if (token && this.cust) {
+        await saveFcmToken(this.cust.id, token);
+        console.log('FCM token registered');
+      }
+      // In-app notification when portal is open
+      onMessage(messaging, (payload: any) => {
+        this.showToast(payload.notification?.title + ': ' + payload.notification?.body, 'info');
+        // If rejection — reload customer data to show rejection card
+        if (payload.data?.action === 'rejected') {
+          fetchCustomer(this.cust!.id).then(c => { this.cust = c; });
+        }
+      });
+    } catch(e) {
+      console.log('Push registration skipped:', (e as any).message);
+    }
+  }
+
+  showToast(msg: string, type: 'ok'|'err'|'info' = 'ok') {
+    this.pushToast = { msg, type };
+    setTimeout(() => { this.pushToast = null; }, 5000);
   }
 
   startResendCooldown() {
@@ -144,21 +183,48 @@ export class RekycCustomer {
     return true;
   }
 
-  // ── OTP verification (simulated: 123456 always works for demo) ──
-  verifyOtp(prefix: string, onSuccess: () => void) {
+  // ── Send OTP via API (real Twilio if configured, demo mode otherwise) ──
+  async triggerOtp(onSent: () => void) {
+    const c = this.cust!;
+    this.otpError = '';
+    this.otpSending = true;
+    try {
+      const result = await sendOtp(c.mobile);
+      if (result.ok) {
+        this.otpDemoMode = !!result.hint;
+        this.startResendCooldown();
+        onSent();
+      } else {
+        this.otpError = result.error || 'Failed to send OTP. Please try again.';
+      }
+    } catch(e) {
+      this.otpError = 'Network error. Please check your connection.';
+    } finally {
+      this.otpSending = false;
+    }
+  }
+
+  // ── Verify OTP via API ──
+  async verifyOtpCode(prefix: string, mobile: string, onSuccess: () => void) {
     const entered = (this.otpVals[prefix] || []).join('');
-    const attempts = (this.otpAttempts[prefix] || 0) + 1;
-    this.otpAttempts = { ...this.otpAttempts, [prefix]: attempts };
-    if (entered === '123456' || entered.length === 6 && attempts >= 3) {
-      // Accept on correct code OR after 3 attempts (demo leniency)
-      this.otpError = '';
-      this.otpLocked = false;
-      onSuccess();
-    } else if (attempts >= 3) {
-      this.otpLocked = true;
-      this.otpError = 'Too many incorrect attempts. Your session has been locked for security.';
-    } else {
-      this.otpError = `Incorrect OTP. ${3 - attempts} attempt${3 - attempts === 1 ? '' : 's'} remaining. (Demo: use 123456)`;
+    this.otpError = '';
+    try {
+      const result = await verifyOtp(mobile, entered);
+      if (result.ok) {
+        this.otpLocked = false;
+        this.otpError = '';
+        onSuccess();
+      } else if (result.locked) {
+        this.otpLocked = true;
+        this.otpError = result.error || 'Session locked.';
+      } else if (result.expired) {
+        this.otpError = result.error || 'OTP expired. Please request a new one.';
+        this.otpVals = { ...this.otpVals, [prefix]: Array(6).fill('') };
+      } else {
+        this.otpError = result.error || 'Incorrect OTP.';
+      }
+    } catch(e) {
+      this.otpError = 'Network error. Please try again.';
     }
   }
 
@@ -246,18 +312,22 @@ export class RekycCustomer {
     );
   }
 
-  renderOtpFooter(prefix: string, mobile: string) {
+  renderOtpFooter(prefix: string, displayMobile: string, actualMobile?: string) {
     return (
       <div>
         {this.otpError && <div class="field-error">{this.otpError}</div>}
         <div class="otp-footer">
-          <span class="hint">OTP sent to {mobile}</span>
+          <span class="hint">OTP sent to {displayMobile}</span>
           {this.resendCooldown > 0
             ? <span class="resend-timer">Resend in {this.resendCooldown}s</span>
-            : <button class="btn-text" onClick={() => { this.otpVals = { ...this.otpVals, [prefix]: Array(6).fill('') }; this.otpError = ''; this.otpAttempts = { ...this.otpAttempts, [prefix]: 0 }; this.otpLocked = false; this.startResendCooldown(); }}>Resend OTP</button>
+            : <button class="btn-text" onClick={async () => {
+            this.otpVals = { ...this.otpVals, [prefix]: Array(6).fill('') };
+            this.otpError = ''; this.otpLocked = false;
+            if (actualMobile) { await this.triggerOtp(() => {}); } else { this.startResendCooldown(); }
+          }}>Resend OTP</button>
           }
         </div>
-        <div class="hint tc" style={{ color: 'var(--acc)', fontSize: '11.5px' }}>Demo: enter any 6 digits — use 123456 for instant success</div>
+        {this.otpDemoMode && <div class="hint tc" style={{ color: 'var(--acc)', fontSize: '11.5px' }}>Demo mode — use 123456</div>}
       </div>
     );
   }
@@ -378,6 +448,12 @@ export class RekycCustomer {
             <div><h1>{t1}</h1><p>{t2}</p></div>
           </div>
           {this.renderSessionWarning()}
+          {this.pushToast && (
+            <div class={`push-toast ${this.pushToast.type}`}>
+              {this.pushToast.msg}
+              <button onClick={() => { this.pushToast = null; }} style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: '700' }}>✕</button>
+            </div>
+          )}
           <div class="body">{this.renderScreen()}</div>
           {this.uploading && <div class="upload-overlay"><div class="upload-spinner" />Uploading...</div>}
         </div>
@@ -433,9 +509,12 @@ export class RekycCustomer {
         {this.mobileError
           ? <div class="field-error">{this.mobileError}</div>
           : <div class="hint">Enter the last 4 digits of your registered mobile number</div>}
-        <button class="btn-primary" disabled={this.mobileEntry.length !== 4}
-          onClick={() => { if (this.validateMobile()) { this.startResendCooldown(); this.go('auth_otp'); } }}>
-          Verify &amp; Proceed
+        <button class="btn-primary" disabled={this.mobileEntry.length !== 4 || this.otpSending}
+          onClick={() => {
+            if (!this.validateMobile()) return;
+            this.triggerOtp(() => this.go('auth_otp'));
+          }}>
+          {this.otpSending ? 'Sending OTP...' : 'Verify & Proceed'}
         </button>
       </div>
     );
@@ -447,9 +526,9 @@ export class RekycCustomer {
           ? <div class="lockout-card">🔒 Session locked — too many incorrect attempts.<br/>Please restart.</div>
           : this.renderOtp('auth')
         }
-        {!this.otpLocked && this.renderOtpFooter('auth', maskedMobile)}
+        {!this.otpLocked && this.renderOtpFooter('auth', maskedMobile, c.mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('auth') || this.otpLocked}
-          onClick={() => this.verifyOtp('auth', () => { this.startSession(); this.go('consent'); })}>
+          onClick={() => this.verifyOtpCode('auth', c.mobile, () => { this.startSession(); this.go('consent'); })}>
           Authenticate
         </button>
         {this.otpLocked && <button class="btn-text" onClick={() => this.reset()}>Start Over</button>}
@@ -622,9 +701,9 @@ export class RekycCustomer {
       <div class="scr tc">
         <p class="t2">Enter OTP sent to <strong>{maskedMobile}</strong></p>
         {this.renderOtp('mold')}
-        {this.renderOtpFooter('mold', maskedMobile)}
+        {this.renderOtpFooter('mold', maskedMobile, c.mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('mold') || this.otpLocked}
-          onClick={() => this.verifyOtp('mold', () => { this.startResendCooldown(); this.go('mob_otp_new'); })}>
+          onClick={() => this.verifyOtpCode('mold', c.mobile, () => { this.startResendCooldown(); this.go('mob_otp_new'); })}>
           Verify &amp; Continue
         </button>
       </div>
@@ -634,9 +713,9 @@ export class RekycCustomer {
       <div class="scr tc">
         <p class="t2">Enter OTP sent to <strong>new number</strong></p>
         {this.renderOtp('mnew')}
-        {this.renderOtpFooter('mnew', 'new number')}
+        {this.renderOtpFooter('mnew', 'new number', c.mobile)}
         <button class="btn-accent" disabled={!this.otpFilled('mnew') || this.otpLocked}
-          onClick={() => this.verifyOtp('mnew', () => this.completeKyc('Partial Update'))}>
+          onClick={() => this.verifyOtpCode('mnew', c.mobile, () => this.completeKyc('Partial Update'))}>
           Verify &amp; Update
         </button>
       </div>
@@ -666,9 +745,9 @@ export class RekycCustomer {
       <div class="scr tc">
         <p class="t2">Enter OTP sent to <strong>new postpaid number</strong></p>
         {this.renderOtp('ppot')}
-        {this.renderOtpFooter('ppot', 'new postpaid number')}
+        {this.renderOtpFooter('ppot', 'new postpaid number', c.mobile)}
         <button class="btn-accent" disabled={!this.otpFilled('ppot') || this.otpLocked}
-          onClick={() => this.verifyOtp('ppot', () => this.completeKyc('Partial Update'))}>
+          onClick={() => this.verifyOtpCode('ppot', c.mobile, () => this.completeKyc('Partial Update'))}>
           Verify &amp; Update
         </button>
       </div>
@@ -814,9 +893,9 @@ export class RekycCustomer {
         <h3 class="sec-title">Aadhaar OTP Verification</h3>
         <p class="t2">OTP sent to the mobile linked with Aadhaar <strong>{this.aadhaarNum}</strong></p>
         {this.renderOtp('adho')}
-        {this.renderOtpFooter('adho', 'Aadhaar-linked mobile')}
+        {this.renderOtpFooter('adho', 'Aadhaar-linked mobile', c.mobile)}
         <button class="btn-primary" disabled={!this.otpFilled('adho') || this.otpLocked}
-          onClick={() => this.verifyOtp('adho', () => this.go('full_doc'))}>
+          onClick={() => this.verifyOtpCode('adho', c.mobile, () => this.go('full_doc'))}>
           Verify Aadhaar
         </button>
       </div>

@@ -114,6 +114,35 @@ export async function reviewDocument(custId: string, docId: string, action: 'app
   return r.json();
 }
 
+export async function sendOtp(mobile: string): Promise<{ ok: boolean; via?: string; hint?: string; error?: string }> {
+  try {
+    const r = await fetch(`${API}/api/otp/send`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile }),
+    });
+    return r.json();
+  } catch(e) { return { ok: false, error: 'Network error' }; }
+}
+
+export async function verifyOtp(mobile: string, otp: string): Promise<{ ok: boolean; error?: string; attemptsLeft?: number; expired?: boolean; locked?: boolean }> {
+  try {
+    const r = await fetch(`${API}/api/otp/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile, otp }),
+    });
+    const data = await r.json();
+    if (!r.ok) return data;
+    return data;
+  } catch(e) { return { ok: false, error: 'Network error' }; }
+}
+
+export async function saveFcmToken(custId: string, token: string): Promise<void> {
+  await fetch(`${API}/api/customers/${custId}/fcm-token`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+}
+
 export async function regenLink(custId: string): Promise<Customer> {
   const r = await fetch(`${API}/api/customers/${custId}/regen-link`, { method: 'POST' });
   return r.json();
@@ -136,3 +165,17 @@ export const KYC_REASONS = [
   { key: 'identity', label: 'Name / identity details changed', sub: 'Legal name change, gender update, etc.' },
   { key: 'constitution', label: 'Constitution type changed', sub: 'Individual to sole proprietor, HUF, etc.' },
 ];
+
+// ── Firebase config (public keys — safe to expose in frontend) ──
+// Set these as %%FIREBASE_*%% placeholders — serve.mjs replaces them at runtime
+export const FIREBASE_CONFIG = {
+  apiKey: typeof window !== 'undefined' ? (window as any).__FIREBASE_API_KEY__ || '' : '',
+  authDomain: typeof window !== 'undefined' ? (window as any).__FIREBASE_AUTH_DOMAIN__ || '' : '',
+  projectId: typeof window !== 'undefined' ? (window as any).__FIREBASE_PROJECT_ID__ || '' : '',
+  messagingSenderId: typeof window !== 'undefined' ? (window as any).__FIREBASE_SENDER_ID__ || '' : '',
+  appId: typeof window !== 'undefined' ? (window as any).__FIREBASE_APP_ID__ || '' : '',
+};
+
+export function firebaseConfigured(): boolean {
+  return !!(FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey);
+}
