@@ -56,6 +56,7 @@ function downloadAck(custId: string, custName: string, kycType: string) {
 @Component({ tag: 'rekyc-customer', styleUrl: 'rekyc-customer.css', shadow: false })
 export class RekycCustomer {
   @Prop({ mutable: true }) customerId: string = 'KYC-4528';
+  @Prop() linkToken: string = ''; // passed from router after token resolution
 
   @State() screen: Screen = 'whatsapp';
   @State() hist: Screen[] = ['whatsapp'];
@@ -95,7 +96,6 @@ export class RekycCustomer {
   @State() digilockerLoading = false;
   @State() newConstitution = '';
   @State() simLoading = false;
-  @State() linkToken = '';
   @State() resumeMode = false; // true when resuming a partial journey
   @State() linkError = '';
   @State() tokenValidating = false;
@@ -105,37 +105,27 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
-    // Use a local variable to track the resolved customer ID
-    // Never rely on this.customerId reading back after mutation — Prop timing is unreliable
-    let resolvedCustId = this.customerId; // starts as 'KYC-4528' default
+    // By the time this runs, rekyc-app has already resolved ?token= to customerId
+    // and passed both as Props. We just need to:
+    // 1. Get maskedMobile from token (for last-4 validation)
+    // 2. Handle DigiLocker callback
+    // 3. Load the correct customer
+
+    const resolvedCustId = this.customerId; // already correct — set by router
 
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const token  = params.get('token');
-      const urlId  = params.get('id') || params.get('custId');
 
-      if (token) {
-        this.linkToken = token;
+      // If token link — get maskedMobile for last-4 validation
+      if (this.linkToken) {
         try {
-          const result = await validateLinkToken(token);
-          if (result.valid && result.custId) {
-            resolvedCustId = result.custId;        // ← local var updated
-            this.customerId = result.custId;        // ← Prop updated for rest of lifecycle
-            if (result.maskedMobile) {
-              this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
-            }
+          const result = await validateLinkToken(this.linkToken);
+          if (result.valid && result.maskedMobile) {
+            this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
           }
-          this.screen = 'browser';
-          this.hist   = ['browser'];
-        } catch(e) {
-          this.screen = 'browser';
-          this.hist   = ['browser'];
-        }
-        window.history.replaceState({}, '', '/customer');
-
-      } else if (urlId) {
-        resolvedCustId = urlId;
-        this.customerId = urlId;
+        } catch(e) { /* non-critical */ }
+        this.screen = 'browser';
+        this.hist   = ['browser'];
         window.history.replaceState({}, '', '/customer');
       }
 
@@ -162,7 +152,7 @@ export class RekycCustomer {
       }
     }
 
-    // Always use resolvedCustId — never this.customerId — to guarantee correct customer loads
+    // Load correct customer — resolvedCustId is guaranteed correct from router
     try { this.cust = await fetchCustomer(resolvedCustId); }
     catch (e) { console.error('Failed to load customer:', e); }
   }
