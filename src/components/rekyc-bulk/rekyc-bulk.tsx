@@ -1,7 +1,7 @@
 import { Component, h, State } from '@stencil/core';
 import { API } from '../../utils/constants';
 
-interface UploadRow { name: string; mobile: string; email: string; acct: string; relationship: string; zone: string; due: string; risk: string; }
+interface UploadRow { name: string; mobile: string; email: string; acct: string; relationship: string; zone: string; city: string; due: string; risk: string; }
 interface ErrorRow extends UploadRow { error: string; row: number; }
 interface ResultRow extends UploadRow { id: string; status: 'created' | 'duplicate' | 'error'; error?: string; }
 
@@ -34,6 +34,7 @@ export class ReKycBulk {
     const zoneIdx    = idx('zone');
     const dueIdx     = idx('due');
     const riskIdx    = idx('risk');
+    const cityIdx    = idx('city');
 
     const rows: UploadRow[] = [];
     const errors: ErrorRow[] = [];
@@ -48,6 +49,7 @@ export class ReKycBulk {
         acct: cols[acctIdx] || '',
         relationship: cols[relIdx] || 'Savings Account',
         zone: cols[zoneIdx] || 'West',
+        city: cols[cityIdx] || '',
         due: cols[dueIdx] || '30 Apr 2026',
         risk: cols[riskIdx] || 'Low',
       };
@@ -56,6 +58,7 @@ export class ReKycBulk {
       if (!row.name) rowErrors.push('Name missing');
       if (!row.mobile || !/^\+?91?\d{10}$/.test(row.mobile.replace(/\s/g,''))) rowErrors.push('Invalid mobile');
       if (!row.acct) rowErrors.push('Account number missing');
+      if (!row.risk || !['Low','Medium','High'].includes(row.risk)) row.risk = 'Low';
 
       if (rowErrors.length) errors.push({ ...row, error: rowErrors.join('; '), row: i + 2 });
       else rows.push(row);
@@ -102,7 +105,7 @@ export class ReKycBulk {
           mobile: mobileFormatted, email: row.email,
           dob: '', pan: 'PENDING', aadhaar: 'PENDING',
           constitution: 'Individual', relationship: row.relationship,
-          address: '', zone: row.zone, city: '', assignedTo: null,
+          address: '', zone: row.zone, city: row.city || '', assignedTo: null,
           due: row.due, status: 'Link Generated', kycType: null, risk: riskVal,
           docsOnFile: [], reminders: [{ ch: 'System', date: new Date().toLocaleDateString('en-IN'), status: 'Record created via bulk upload' }],
           linkActive: true, linkExpiry: row.due + ', 11:59 PM',
@@ -149,7 +152,7 @@ export class ReKycBulk {
   }
 
   downloadTemplate() {
-    const csv = 'Name,Mobile,Email,Account Number,Relationship Type,Zone,Due Date,Risk\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,30 Apr 2026,Low';
+    const csv = 'Name *,Mobile *,Email,Account Number *,Relationship Type,Zone *,City,Due Date,Risk *\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,Mumbai,30 Apr 2026,Low';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -176,7 +179,7 @@ export class ReKycBulk {
             <div class="upload-instructions">
               <div class="inst-title">Required columns in your CSV:</div>
               <div class="inst-cols">
-                {['Name *', 'Mobile *', 'Email', 'Account Number *', 'Relationship Type', 'Zone', 'Due Date'].map(c =>
+                {['Name *', 'Mobile *', 'Email', 'Account Number *', 'Relationship Type', 'Zone *', 'City', 'Due Date', 'Risk *'].map(c =>
                   <span class={c.includes('*') ? 'col-badge required' : 'col-badge'}>{c}</span>
                 )}
               </div>
@@ -218,10 +221,10 @@ export class ReKycBulk {
               <div class="preview-table-wrap">
                 <div class="pt-title">Records to be created ({this.rows.length})</div>
                 <table class="preview-table">
-                  <thead><tr><th>Name</th><th>Mobile</th><th>Account</th><th>Relationship</th><th>Zone</th><th>Risk</th><th>Due</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Mobile</th><th>Account</th><th>Zone</th><th>City</th><th>Risk</th><th>Due</th></tr></thead>
                   <tbody>
                     {this.rows.slice(0,10).map(r =>
-                      <tr><td>{r.name}</td><td>{r.mobile}</td><td>{r.acct}</td><td>{r.relationship}</td><td>{r.zone}</td><td>{r.risk || 'Low'}</td><td>{r.due}</td></tr>
+                      <tr><td>{r.name}</td><td>{r.mobile}</td><td>{r.acct}</td><td>{r.zone}</td><td>{r.city || '—'}</td><td>{r.risk || 'Low'}</td><td>{r.due}</td></tr>
                     )}
                     {this.rows.length > 10 && <tr><td colSpan={6} class="more-rows">... and {this.rows.length - 10} more rows</td></tr>}
                   </tbody>

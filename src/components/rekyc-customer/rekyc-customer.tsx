@@ -1,7 +1,7 @@
 import { Component, h, State, Prop } from '@stencil/core';
 import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured, getDigilockerAuthUrl, checkDigilockerStatus, validateLinkToken, consumeLinkToken } from '../../utils/constants';
 
-type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'landing'|'confirm'
+type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'pan_upfront'|'pan_upfront_result'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
   |'full_intro'|'full_pan'|'full_pan_result'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'|'digilocker_result'
@@ -385,7 +385,6 @@ export class RekycCustomer {
 
     this.panError = '';
     this.panVerified = true;
-    this.go('full_pan_result');
   }
 
   // ── Aadhaar validation ──
@@ -589,6 +588,8 @@ export class RekycCustomer {
     browser: ['Verify Identity', 'Secure portal'],
     auth_otp: ['Authentication', 'Verify identity'],
     consent: ['Consent', 'Before we begin'],
+    pan_upfront: ['PAN Verification', 'Identity check'],
+    pan_upfront_result: ['PAN Confirmed', 'Identity verified'],
     landing: ['Review Details', 'Your current KYC'],
     confirm: ['Self-Declaration', 'Confirm details'],
     minor_choice: ['Update Details', 'What changed?'],
@@ -757,10 +758,73 @@ export class RekycCustomer {
         {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false,
           <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>
         ))}
-        <button class="btn-accent" style={{ marginTop: '16px' }} disabled={!this.allConsented()} onClick={() => this.go('landing')}>
-          Proceed to KYC Update
+        <button class="btn-accent" style={{ marginTop: '16px' }} disabled={!this.allConsented()} onClick={() => this.go('pan_upfront')}>
+          Proceed to Identity Verification
         </button>
         <p class="hint tc" style={{ marginTop: '8px' }}>By proceeding, you authorise National Bank to access and update your KYC records.</p>
+      </div>
+    );
+
+    case 'pan_upfront': return (
+      <div class="scr">
+        <div class="bank-row"><div class="bank-logo">NB</div><div><strong>Identity Verification</strong><br/><span class="t2">Required before proceeding</span></div></div>
+        {this.renderNotice('info', <span>To confirm your identity, please enter your PAN details. This is a mandatory step for all Re-KYC journeys.</span>)}
+        <label class="field-label">PAN Number *</label>
+        <input class={{ 'field-input': true, 'field-err': !!this.panError && !validPan(this.panNum) }}
+          placeholder="ABCPS1234K" maxLength={10}
+          value={this.panNum}
+          onInput={(e: any) => { this.panNum = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); this.panError = ''; }}
+          style={{ textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }} />
+        {this.panNum.length === 10 && validPan(this.panNum) && <div class="hint" style={{ color: 'var(--acc)' }}>✓ Valid format</div>}
+        <label class="field-label">Full Name (as on PAN) *</label>
+        <input class="field-input" placeholder="Enter name exactly as on PAN card"
+          value={this.panName} onInput={(e: any) => { this.panName = e.target.value; this.panError = ''; }} />
+        <label class="field-label">Date of Birth (as per PAN) *</label>
+        <input class="field-input" type="date"
+          value={this.panDob} onInput={(e: any) => { this.panDob = e.target.value; this.panError = ''; }} />
+        <div class="hint">DOB must match exactly as printed on your PAN card</div>
+        {this.panError && <div class="field-error">{this.panError}</div>}
+        <button class="btn-primary" style={{ marginTop: '8px' }}
+          disabled={!validPan(this.panNum) || !this.panName.trim() || !this.panDob || this.simLoading}
+          onClick={async () => {
+            this.simLoading = true;
+            await new Promise(r => setTimeout(r, 1800));
+            this.simLoading = false;
+            this.verifyPan();
+            if (this.panVerified) this.go('pan_upfront_result');
+          }}>
+          {this.simLoading
+            ? <span class="btn-loading"><span class="btn-spinner" />Verifying with NSDL...</span>
+            : 'Verify PAN'}
+        </button>
+      </div>
+    );
+
+    case 'pan_upfront_result': return (
+      <div class="scr">
+        <div class="verify-result ok">
+          <div class="vr-icon">✓</div>
+          <div class="vr-body">
+            <div class="vr-title">Identity Verified</div>
+            <div class="vr-sub">PAN confirmed — proceed to review your KYC details</div>
+          </div>
+        </div>
+        <div class="nsdl-card">
+          <div class="nsdl-header">
+            <div class="nsdl-logo">IT</div>
+            <div><div class="nsdl-title">Income Tax Department</div><div class="nsdl-sub">PAN Verification Response</div></div>
+            <div class="nsdl-status">ACTIVE</div>
+          </div>
+          <div class="nsdl-body">
+            <div class="nsdl-row"><span class="nsdl-lbl">PAN</span><span class="nsdl-val pan-mono">{this.panNum}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Name</span><span class="nsdl-val">{this.panName.toUpperCase()}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Date of Birth</span><span class="nsdl-val">{this.panDob}</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">PAN Type</span><span class="nsdl-val">Individual (P)</span></div>
+            <div class="nsdl-row"><span class="nsdl-lbl">Status</span><span class="nsdl-val nsdl-ok">✓ Active &amp; Valid</span></div>
+          </div>
+          <div class="nsdl-footer">Verification Ref: NSDL{Date.now().toString().slice(-10)} | {new Date().toLocaleDateString('en-IN')}</div>
+        </div>
+        <button class="btn-primary" onClick={() => this.go('landing')}>View My KYC Details →</button>
       </div>
     );
 
@@ -1071,14 +1135,13 @@ export class RekycCustomer {
         <button class="btn-primary" style={{ marginTop: '8px' }}
           disabled={!validPan(this.panNum) || !this.panName.trim() || !this.panDob || this.simLoading}
           onClick={async () => {
-            // Validate first — if error, show immediately
             const pan = this.panNum.toUpperCase();
             if (!validPan(pan) || !this.panName.trim() || !this.panDob) { this.verifyPan(); return; }
-            // Show realistic loader before result
             this.simLoading = true;
             await new Promise(r => setTimeout(r, 1800));
             this.simLoading = false;
             this.verifyPan();
+            if (this.panVerified) this.go('full_pan_result');
           }}>
           {this.simLoading
             ? <span class="btn-loading"><span class="btn-spinner" />Verifying with NSDL...</span>

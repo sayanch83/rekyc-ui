@@ -30,6 +30,9 @@ export class RekycConfig {
   @State() saved   = false;
   @State() resetting = false;
   @State() resetDone = false;
+  @State() deleting = false;
+  @State() deleteId = '';
+  @State() deleteConfirm = false;
   @State() err     = '';
 
   // Form fields kept separate so they are reactive
@@ -99,6 +102,24 @@ export class RekycConfig {
       setTimeout(() => this.resetDone = false, 4000);
     } catch(e: any) { this.err = `Reset failed: ${e.message}`; }
     finally { this.resetting = false; }
+  }
+
+  async deleteCustomer() {
+    if (!this.deleteConfirm) { this.deleteConfirm = true; return; }
+    this.deleting = true; this.err = '';
+    try {
+      const r = await fetch(`${apiBase()}/api/customers/${this.selId}`, { method: 'DELETE' });
+      if (r.ok) {
+        this.deleteConfirm = false;
+        // Reload with first customer
+        this.selId = 'KYC-4528';
+        await this.load(this.selId);
+      } else {
+        const b = await r.json();
+        this.err = b.error || 'Delete failed';
+      }
+    } catch(e: any) { this.err = `Delete failed: ${e.message}`; }
+    finally { this.deleting = false; this.deleteConfirm = false; }
   }
 
   inp(label: string, hint: string, el: any) {
@@ -255,6 +276,32 @@ export class RekycConfig {
                   <span class="ql-arr">›</span>
                 </a>
               )}
+            </div>
+
+            <div class="cfg-card danger-card" style={{ marginBottom: '8px' }}>
+              <div class="card-title">Delete This Customer</div>
+              <div class="card-sub">Remove this customer record from the dashboard. Useful to re-add via bulk upload.</div>
+              {this.deleteConfirm
+                ? <div>
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-danger)', marginBottom: '8px', fontWeight: '600' }}>
+                      ⚠ Confirm delete {this.selId}? This cannot be undone.
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button class="reset-btn" disabled={this.deleting}
+                        style={{ flex: '1', borderColor: 'rgba(144,9,9,.4)', background: '#fde8e8' }}
+                        onClick={() => this.deleteCustomer()}>
+                        {this.deleting ? 'Deleting...' : 'Yes, Delete'}
+                      </button>
+                      <button class="reset-btn" onClick={() => this.deleteConfirm = false}
+                        style={{ flex: '1', borderColor: 'var(--color-border-secondary)', color: 'var(--color-text-secondary)' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                : <button class="reset-btn" onClick={() => this.deleteCustomer()}>
+                    ✕ Delete Customer Record
+                  </button>
+              }
             </div>
 
             <div class="cfg-card danger-card">

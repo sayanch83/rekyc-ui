@@ -150,6 +150,8 @@ export class RekycAnalytics {
   @State() liveLoaded = false;
   private canvasTrend: HTMLCanvasElement;
   private canvasDoughnut: HTMLCanvasElement;
+  private canvasZone: HTMLCanvasElement;
+  private canvasCity: HTMLCanvasElement;
   private chartsLoaded = false;
 
   componentDidLoad() { this.initCharts(); this.loadLiveData(); }
@@ -216,6 +218,67 @@ export class RekycAnalytics {
           datasets: [{ data: [92, 312, 682], backgroundColor: ['#900909','#FFAA00','#0B7A5B'], borderWidth: 0, hoverOffset: 6 }]
         },
         options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false } } }
+      });
+    }
+
+    // Zone-wise concentration bar chart
+    if (this.canvasZone) {
+      const zoneNames = Object.keys(ZONES);
+      const zoneData = Object.values(ZONES);
+      new Chart(this.canvasZone, {
+        type: 'bar',
+        data: {
+          labels: zoneNames,
+          datasets: [
+            { label: 'Completed', data: zoneData.map(z => z.completed), backgroundColor: '#0B7A5B', borderRadius: 4, stack: 'a' },
+            { label: 'Pending',   data: zoneData.map(z => z.pending),   backgroundColor: '#FFAA00', borderRadius: 0, stack: 'a' },
+            { label: 'Rejected',  data: zoneData.map(z => z.rejected),  backgroundColor: '#900909', borderRadius: 0, stack: 'a' },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } } },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
+            y: { stacked: true, beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } }
+          }
+        }
+      });
+    }
+
+    // City-wise concentration horizontal bar chart
+    if (this.canvasCity) {
+      const cityData = [
+        { city: 'Mumbai',    total: 142, completed: 68 },
+        { city: 'Delhi',     total: 118, completed: 52 },
+        { city: 'Bangalore', total: 96,  completed: 44 },
+        { city: 'Chennai',   total: 88,  completed: 38 },
+        { city: 'Hyderabad', total: 76,  completed: 32 },
+        { city: 'Pune',      total: 64,  completed: 28 },
+        { city: 'Ahmedabad', total: 58,  completed: 24 },
+        { city: 'Chandigarh',total: 44,  completed: 18 },
+      ];
+      const liveCities = this.liveLoaded
+        ? cityData.map(d => ({ ...d, total: Math.round(d.total * this.liveTotal / 686) }))
+        : cityData;
+      new Chart(this.canvasCity, {
+        type: 'bar',
+        data: {
+          labels: liveCities.map(d => d.city),
+          datasets: [
+            { label: 'Total KYC Due', data: liveCities.map(d => d.total), backgroundColor: 'rgba(7,73,148,.15)', borderColor: '#074994', borderWidth: 1, borderRadius: 4 },
+            { label: 'Completed',     data: liveCities.map(d => d.completed), backgroundColor: '#0B7A5B', borderRadius: 4 },
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } } },
+          scales: {
+            x: { beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } },
+            y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+          }
+        }
       });
     }
   }
@@ -614,6 +677,24 @@ export class RekycAnalytics {
                   {this.renderPipelineRow('In Progress', 96, t.total, '#3067A6')}
                   {this.renderPipelineRow('Initiated', 105, t.total, '#ACC2DB')}
                   {this.renderPipelineRow('Rejected', t.rejected, t.total, '#900909')}
+                </div>
+              </div>
+            </div>
+
+            {/* Zone & City concentration charts */}
+            <div class="charts-row" style={{ marginTop: '16px' }}>
+              <div class="chart-card">
+                <div class="chart-title">Zone-wise Concentration</div>
+                <div class="chart-sub">KYC status distribution across all zones</div>
+                <div style={{ height: '200px', position: 'relative' }}>
+                  <canvas ref={el => this.canvasZone = el as HTMLCanvasElement} />
+                </div>
+              </div>
+              <div class="chart-card" style={{ gridColumn: 'span 2' }}>
+                <div class="chart-title">City-wise Concentration</div>
+                <div class="chart-sub">Top cities by KYC volume</div>
+                <div style={{ height: '200px', position: 'relative' }}>
+                  <canvas ref={el => this.canvasCity = el as HTMLCanvasElement} />
                 </div>
               </div>
             </div>
