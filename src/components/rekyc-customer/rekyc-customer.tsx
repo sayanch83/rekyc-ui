@@ -109,30 +109,26 @@ export class RekycCustomer {
       const urlId  = params.get('id') || params.get('custId');
 
       if (token) {
+        // Store token — validate mobile match later when customer submits number
+        // Don't pre-validate here as it causes false failures on cold starts
         this.linkToken = token;
-        // DO NOT wipe URL yet — keep token in URL until validation succeeds
-        // so a page refresh still works
+
+        // Get custId from token so we load the right customer
         try {
           const result = await validateLinkToken(token);
           if (result.valid && result.custId) {
             (this as any).customerId = result.custId;
-            this.screen = 'browser';
-            this.hist   = ['browser'];
-            // Only clean URL after confirmed valid
-            window.history.replaceState({}, '', '/customer');
-          } else {
-            this.linkError = result.error || 'This link is invalid or has expired.';
-            this.screen = 'link_error' as any;
-            this.hist   = ['link_error' as any];
-            window.history.replaceState({}, '', '/customer');
           }
-        } catch(e) {
-          // Network error — keep token in URL, show browser screen as fallback
-          // Customer can retry by refreshing
+          // Whether valid or not, show browser screen — full validation happens on mobile submit
           this.screen = 'browser';
           this.hist   = ['browser'];
-          console.warn('Token validation network error — will retry on mobile submit');
+        } catch(e) {
+          // Network error — still show browser screen, validate on submit
+          this.screen = 'browser';
+          this.hist   = ['browser'];
         }
+        window.history.replaceState({}, '', '/customer');
+
       } else if (urlId) {
         (this as any).customerId = urlId;
         window.history.replaceState({}, '', '/customer');
