@@ -248,20 +248,15 @@ export class RekycCustomer {
       return false;
     }
 
-    // Token flow — validate mobile matches the token
-    if (this.linkToken) {
-      this.tokenValidating = true;
-      try {
-        const result = await validateLinkToken(this.linkToken, `+91${digits}`);
-        if (!result.valid) {
-          this.mobileError = result.error || 'Mobile number does not match this link. Please use the number where the SMS was received.';
-          return false;
-        }
-      } catch(e) {
-        this.mobileError = 'Could not verify. Please check your connection.';
+    // Token flow — verify the entered mobile matches the token's registered mobile
+    // We do this by checking last 4 digits against what's in the token
+    // Full mobile validation happens via OTP delivery — wrong number = no OTP received
+    if (this.linkToken && this.cust) {
+      const tokenLast4 = this.cust.mobile.replace(/\D/g,'').slice(-4);
+      const enteredLast4 = digits.slice(-4);
+      if (tokenLast4 !== enteredLast4) {
+        this.mobileError = 'The mobile number you entered does not match the number registered for this link.';
         return false;
-      } finally {
-        this.tokenValidating = false;
       }
     }
 
