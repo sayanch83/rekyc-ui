@@ -7,23 +7,15 @@ function apiBase(): string {
 }
 
 interface Cust { id: string; name: string; mobile: string; email: string; due: string; status: string; risk: string; }
-
-const CUSTOMERS = [
-  { id: 'KYC-4528', label: 'Rajesh Kumar Sharma' },
-  { id: 'KYC-7891', label: 'Priya Mehta' },
-  { id: 'KYC-5512', label: 'Sneha Reddy' },
-  { id: 'KYC-6678', label: 'Vikram Singh' },
-  { id: 'KYC-8834', label: 'Arjun Nair' },
-  { id: 'KYC-9901', label: 'Sanjay Kapoor' },
-  { id: 'KYC-7723', label: 'Rohit Agarwal' },
-];
+interface CustListItem { id: string; label: string; }
 
 const STATUSES = ['Link Generated','Initiated','In Progress','Pending Doc Upload','Pending VKYC','Pending Verification','Completed','Rejected'];
 const RISKS    = ['Low','Medium','High'];
 
 @Component({ tag: 'rekyc-config', styleUrl: 'rekyc-config.css', shadow: false })
 export class RekycConfig {
-  @State() selId   = 'KYC-4528';
+  @State() custList: CustListItem[] = [];  // loaded from API
+  @State() selId   = '';
   @State() cust: Cust | null = null;
   @State() loading = false;
   @State() saving  = false;
@@ -43,7 +35,23 @@ export class RekycConfig {
   @State() fStatus = '';
   @State() fRisk   = '';
 
-  componentDidLoad() { this.load(this.selId); }
+  componentDidLoad() { this.loadList(); }
+
+  async loadList() {
+    try {
+      const r = await fetch(`${apiBase()}/api/customers`);
+      const all: any[] = await r.json();
+      this.custList = all
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => ({ id: c.id, label: `${c.name} — ${c.id}` }));
+      if (this.custList.length > 0) {
+        this.selId = this.custList[0].id;
+        await this.load(this.selId);
+      }
+    } catch(e: any) {
+      this.err = `Could not load customer list — ${e.message}`;
+    }
+  }
 
   async load(id: string) {
     this.loading = true;
@@ -98,7 +106,7 @@ export class RekycConfig {
     try {
       await fetch(`${apiBase()}/api/reset`, { method: 'POST' });
       this.resetDone = true;
-      await this.load(this.selId);
+      await this.loadList(); // reload full list after reset
       setTimeout(() => this.resetDone = false, 4000);
     } catch(e: any) { this.err = `Reset failed: ${e.message}`; }
     finally { this.resetting = false; }
@@ -111,9 +119,7 @@ export class RekycConfig {
       const r = await fetch(`${apiBase()}/api/customers/${this.selId}`, { method: 'DELETE' });
       if (r.ok) {
         this.deleteConfirm = false;
-        // Reload with first customer
-        this.selId = 'KYC-4528';
-        await this.load(this.selId);
+        await this.loadList(); // reload full list so deleted customer disappears
       } else {
         const b = await r.json();
         this.err = b.error || 'Delete failed';
@@ -159,15 +165,18 @@ export class RekycConfig {
 
             {/* Customer selector */}
             <div class="cfg-card">
-              <div class="card-title">Select Customer</div>
-              <select class="cfg-sel"
-                onChange={(e: any) => { this.selId = e.target.value; this.load(e.target.value); }}>
-                {CUSTOMERS.map(c =>
-                  <option value={c.id} selected={this.selId === c.id}>
-                    {c.id} — {c.label}
-                  </option>
-                )}
-              </select>
+              <div class="card-title">Select Customer {this.custList.length > 0 && <span style={{ fontWeight: '400', color: 'var(--color-text-secondary)', fontSize: '12px' }}>({this.custList.length} total)</span>}</div>
+              {this.custList.length === 0 && !this.loading
+                ? <div class="cfg-loading" style={{ marginTop: '8px' }}><div class="spin" />Loading customers...</div>
+                : <select class="cfg-sel"
+                    onChange={(e: any) => { this.selId = e.target.value; this.load(e.target.value); }}>
+                    {this.custList.map(c =>
+                      <option value={c.id} selected={this.selId === c.id}>
+                        {c.label}
+                      </option>
+                    )}
+                  </select>
+              }
             </div>
 
             {/* Error */}

@@ -1,7 +1,7 @@
 import { Component, h, State, Prop } from '@stencil/core';
 import { Customer, fetchCustomer, updateCustomer, uploadDocument, CONSENT_ITEMS, KYC_REASONS, fileUrl, sendOtp, verifyOtp, saveFcmToken, FIREBASE_CONFIG, firebaseConfigured, getDigilockerAuthUrl, checkDigilockerStatus, validateLinkToken, consumeLinkToken } from '../../utils/constants';
 
-type Screen = 'whatsapp'|'browser'|'auth_otp'|'consent'|'pan_upfront'|'pan_upfront_result'|'landing'|'confirm'
+type Screen = 'whatsapp'|'browser'|'auth_otp'|'already_submitted'|'consent'|'pan_upfront'|'pan_upfront_result'|'landing'|'confirm'
   |'minor_choice'|'addr'|'mob_access'|'mob_new'|'mob_otp_old'|'mob_otp_new'
   |'mob_no_access'|'mob_postpaid'|'mob_postpaid_otp'|'branch'
   |'full_intro'|'full_pan'|'full_pan_result'|'full_aadhaar'|'full_aadhaar_otp'|'digilocker'|'digilocker_result'
@@ -96,6 +96,7 @@ export class RekycCustomer {
   @State() newConstitution = '';
   @State() simLoading = false;
   @State() linkToken = '';
+  @State() resumeMode = false; // true when resuming a partial journey
   @State() linkError = '';
   @State() tokenValidating = false;
   @State() tokenMobileLast4 = ''; // last 4 of mobile from token — for validation // generic simulated loading state
@@ -192,8 +193,80 @@ export class RekycCustomer {
       if (remaining <= 0) { clearInterval(this.sessionTimer); this.reset(); }
       else if (remaining <= 2 * 60 * 1000) { this.sessionWarning = true; }
     }, 5000);
-    // Register for push notifications after session starts
     this.registerPush();
+
+    // After OTP, determine where to resume based on customer's journey status
+    const c = this.cust;
+    if (!c) { this.go('consent'); return; }
+
+    // ── Already fully submitted ──
+    if (c.status === 'Completed' || c.status === 'Pending VKYC' || c.status === 'Pending Verification') {
+      this.go('already_submitted');
+      return;
+    }
+
+    // ── Partial journey — resume from where they left ──
+    const panDone  = c.panStep?.status === 'Verified';
+    const aadDone  = c.poiStep?.status === 'Verified';
+    const docDone  = !!(c as any).docUploadDate || (c.documents && c.documents.length > 0);
+    const vkycPend = c.vkycStep?.status === 'Pending';
+
+    if (panDone || aadDone || docDone || vkycPend ||
+        ['In Progress','Initiated','Link Generated','Pending Doc Upload','Pending VKYC'].includes(c.status)) {
+
+      // Has some progress — skip consent & PAN upfront, go to consent first then resume
+      if (panDone && aadDone && docDone) {
+        // All steps done, just VKYC remaining
+        this.resumeMode = true;
+        this.panVerified = true;
+        this.go('consent');
+      } else if (panDone && aadDone) {
+        this.resumeMode = true;
+        this.panVerified = true;
+        this.go('consent');
+      } else if (panDone) {
+        this.resumeMode = true;
+        this.panVerified = true;
+        this.go('consent');
+      } else {
+        // No steps done yet — normal flow
+        this.go('consent');
+      }
+    } else {
+      // Fresh journey
+      this.go('consent');
+    }
+  }
+
+  // ── Determine resume screen after consent (for partial journeys) ──
+  getResumeScreen(): Screen {
+    const c = this.cust;
+    if (!c) return 'landing';
+    const panDone = c.panStep?.status === 'Verified';
+    const aadDone = c.poiStep?.status === 'Verified';
+    const docDone = !!(c as any).docUploadDate || (c.documents && c.documents.length > 0);
+
+    if (panDone && aadDone && docDone) return 'full_vkyc';
+    if (panDone && aadDone) return 'full_doc';
+    if (panDone) return 'full_aadhaar';
+    return 'landing';
+  }
+
+  // ── Journey progress steps derived from customer record ──
+  getJourneySteps() {
+    const c = this.cust;
+    if (!c) return [];
+    const panDone  = c.panStep?.status === 'Verified';
+    const aadDone  = c.poiStep?.status === 'Verified';
+    const docDone  = !!(c as any).docUploadDate || (c.documents && c.documents.filter((d:any) => d.status !== 'rejected').length > 0);
+    const vkycDone = c.vkycStep?.status === 'Completed';
+    const vkycPend = c.vkycStep?.status === 'Pending';
+    return [
+      { label: 'PAN Verification',  done: panDone,  active: !panDone },
+      { label: 'Aadhaar Validation', done: aadDone,  active: panDone && !aadDone },
+      { label: 'Document Upload',    done: docDone,  active: aadDone && !docDone },
+      { label: 'Video KYC',          done: vkycDone, active: docDone && (vkycPend || !vkycDone) },
+    ];
   }
 
   // ── Firebase Push Registration ──
@@ -589,6 +662,7 @@ export class RekycCustomer {
     whatsapp: ['Re-KYC', 'Secure identity verification'],
     browser: ['Verify Identity', 'Secure portal'],
     auth_otp: ['Authentication', 'Verify identity'],
+    already_submitted: ['Already Submitted', 'KYC under review'],
     consent: ['Consent', 'Before we begin'],
     pan_upfront: ['PAN Verification', 'Identity check'],
     pan_upfront_result: ['PAN Confirmed', 'Identity verified'],
@@ -622,7 +696,7 @@ export class RekycCustomer {
   render() {
     if (!this.cust) return <div class="loading">Loading...</div>;
     const [t1, t2] = this.titles[this.screen] || ['Re-KYC', ''];
-    const noBack = ['whatsapp', 'success', 'branch', 'consent'];
+    const noBack = ['whatsapp', 'success', 'branch', 'consent', 'already_submitted'];
 
     return (
       <div class="phone-wrap">
@@ -643,9 +717,29 @@ export class RekycCustomer {
               <button onClick={() => { this.pushToast = null; }} style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: '700' }}>✕</button>
             </div>
           )}
+          {this.renderProgressBar()}
           <div class="body">{this.renderScreen()}</div>
           {this.uploading && <div class="upload-overlay"><div class="upload-spinner" />Uploading...</div>}
         </div>
+      </div>
+    );
+  }
+
+  renderProgressBar() {
+    const midScreens: string[] = ['full_pan','full_pan_result','full_aadhaar','full_aadhaar_otp','digilocker','digilocker_result','full_doc','full_vkyc','full_vkyc_live'];
+    if (!midScreens.includes(this.screen)) return null;
+    const steps = this.getJourneySteps();
+    return (
+      <div class="progress-bar-wrap">
+        {steps.map((s, i) => (
+          <div class={{ 'pb-step': true, 'pb-done': s.done, 'pb-active': s.active }}>
+            <div class="pb-dot">
+              {s.done ? <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> : <span>{i + 1}</span>}
+            </div>
+            <div class="pb-label">{s.label}</div>
+            {i < steps.length - 1 && <div class="pb-line" />}
+          </div>
+        ))}
       </div>
     );
   }
@@ -666,6 +760,38 @@ export class RekycCustomer {
     });
 
     switch (this.screen) {
+
+    // ── Already submitted ──
+    case 'already_submitted': return (
+      <div class="scr tc">
+        <div class="suc-icon" style={{ background: 'linear-gradient(135deg,#074994,#3067A6)' }}>✓</div>
+        <h2>KYC Already Submitted</h2>
+        <p class="t2" style={{ marginBottom: '16px' }}>
+          Hi <strong>{c.name.split(' ')[0]}</strong>, your KYC update has already been submitted and is currently under review.
+        </p>
+        <div class="data-card" style={{ textAlign: 'left', marginBottom: '12px' }}>
+          <div class="d-row"><span class="d-lbl">Customer</span><span class="d-val">{c.name}</span></div>
+          <div class="d-row"><span class="d-lbl">Status</span>
+            <span class="d-val" style={{ color: c.status === 'Completed' ? 'var(--acc)' : '#B8860B', fontWeight: '700' }}>
+              {c.status === 'Completed' ? '✓ Completed' : c.status}
+            </span>
+          </div>
+          {c.completedDate && <div class="d-row"><span class="d-lbl">Submitted On</span><span class="d-val">{c.completedDate}</span></div>}
+        </div>
+        {c.status === 'Completed'
+          ? this.renderNotice('ok', 'Your KYC has been verified and approved. No further action needed.')
+          : this.renderNotice('info', <span>Your submission is under review. You will receive an SMS and email once approved. Expected TAT: <strong>2–3 working days</strong>.</span>)
+        }
+        {c.status !== 'Completed' && (
+          <div class="ref-card" style={{ marginTop: '12px', textAlign: 'left', background: 'var(--pri-bg)' }}>
+            <div class="ref-label">WHAT HAPPENS NEXT</div>
+            <div style={{ fontSize: '12.5px', color: 'var(--t2)', lineHeight: '1.6' }}>
+              Your documents are being reviewed by National Bank. Once approved, your account services will continue and your reward will be credited.
+            </div>
+          </div>
+        )}
+      </div>
+    );
 
     case 'link_error': return (
       <div class="scr tc">
@@ -760,8 +886,16 @@ export class RekycCustomer {
         {CONSENT_ITEMS.map((txt, i) => this.renderChk(`c${i}`, false,
           <span>{i === 0 ? <span>I, <strong>{c.name}</strong>, {txt.slice(2)}</span> : txt}</span>
         ))}
-        <button class="btn-accent" style={{ marginTop: '16px' }} disabled={!this.allConsented()} onClick={() => this.go('pan_upfront')}>
-          Proceed to Identity Verification
+        <button class="btn-accent" style={{ marginTop: '16px' }} disabled={!this.allConsented()}
+          onClick={() => {
+            if (this.resumeMode) {
+              const dest = this.getResumeScreen();
+              this.go(dest);
+            } else {
+              this.go('pan_upfront');
+            }
+          }}>
+          {this.resumeMode ? 'Continue My KYC →' : 'Proceed to Identity Verification'}
         </button>
         <p class="hint tc" style={{ marginTop: '8px' }}>By proceeding, you authorise National Bank to access and update your KYC records.</p>
       </div>
@@ -770,7 +904,16 @@ export class RekycCustomer {
     case 'pan_upfront': return (
       <div class="scr">
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>Identity Verification</strong><br/><span class="t2">Required before proceeding</span></div></div>
-        {this.renderNotice('info', <span>To confirm your identity, please enter your PAN details. This is a mandatory step for all Re-KYC journeys.</span>)}
+        {this.cust?.panStep?.status === 'Verified'
+          ? <div class="resume-notice">
+              <div class="rn-icon">✓</div>
+              <div class="rn-body">
+                <div class="rn-title">PAN already verified</div>
+                <div class="rn-sub">PAN was verified in a previous session. You can continue without re-entering, or update your details below.</div>
+              </div>
+            </div>
+          : this.renderNotice('info', <span>To confirm your identity, please enter your PAN details. This is a mandatory step for all Re-KYC journeys.</span>)
+        }
         <label class="field-label">PAN Number *</label>
         <input class={{ 'field-input': true, 'field-err': !!this.panError && !validPan(this.panNum) }}
           placeholder="ABCPS1234K" maxLength={10}
@@ -826,7 +969,13 @@ export class RekycCustomer {
           </div>
           <div class="nsdl-footer">Verification Ref: NSDL{Date.now().toString().slice(-10)} | {new Date().toLocaleDateString('en-IN')}</div>
         </div>
-        <button class="btn-primary" onClick={() => this.go('landing')}>View My KYC Details →</button>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          <button class="btn-primary" style={{ flex: '1' }} onClick={() => this.go('landing')}>View My KYC Details →</button>
+          <button class="btn-text" style={{ flex: '0 0 auto', color: 'var(--t2)', fontSize: '12.5px' }}
+            onClick={() => { this.panVerified = false; this.panError = ''; this.go('pan_upfront'); }}>
+            ✎ Change Details
+          </button>
+        </div>
       </div>
     );
 
@@ -1182,14 +1331,23 @@ export class RekycCustomer {
             Verification Ref: NSDL{Date.now().toString().slice(-10)} &nbsp;|&nbsp; {new Date().toLocaleDateString('en-IN')}
           </div>
         </div>
-        <button class="btn-primary" onClick={() => this.go('full_aadhaar')}>Continue to Aadhaar Validation</button>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          <button class="btn-primary" style={{ flex: '1' }} onClick={() => this.go('full_aadhaar')}>Continue to Aadhaar</button>
+          <button class="btn-text" style={{ flex: '0 0 auto', color: 'var(--t2)', fontSize: '12.5px' }}
+            onClick={() => { this.panVerified = false; this.panError = ''; this.go('full_pan'); }}>
+            ✎ Change Details
+          </button>
+        </div>
       </div>
     );
 
     case 'full_aadhaar': return (
       <div class="scr">
         <h3 class="sec-title">Step 2: Aadhaar Validation</h3>
-        {this.renderNotice('info', 'Choose your preferred verification method.')}
+        {this.cust?.poiStep?.status === 'Verified'
+          ? <div class="resume-notice"><div class="rn-icon">✓</div><div class="rn-body"><div class="rn-title">Aadhaar already verified ({this.cust.poiStep.mode})</div><div class="rn-sub">You can continue to document upload or re-verify below.</div></div></div>
+          : this.renderNotice('info', 'Choose your preferred verification method.')
+        }
         {this.renderRadio(this.aadhaarMethod === 'digilocker', 'DigiLocker Fetch (Recommended)', 'Instant paperless — no OTP needed', () => this.aadhaarMethod = 'digilocker')}
         {this.renderRadio(this.aadhaarMethod === 'otp', 'Aadhaar OTP (eKYC)', 'OTP sent to Aadhaar-linked mobile', () => this.aadhaarMethod = 'otp')}
         {this.aadhaarMethod === 'otp' && (
