@@ -55,7 +55,7 @@ function downloadAck(custId: string, custName: string, kycType: string) {
 
 @Component({ tag: 'rekyc-customer', styleUrl: 'rekyc-customer.css', shadow: false })
 export class RekycCustomer {
-  @Prop() customerId: string = 'KYC-4528';
+  @Prop({ mutable: true }) customerId: string = 'KYC-4528';
 
   @State() screen: Screen = 'whatsapp';
   @State() hist: Screen[] = ['whatsapp'];
@@ -118,7 +118,7 @@ export class RekycCustomer {
         try {
           const result = await validateLinkToken(token);
           if (result.valid && result.custId) {
-            (this as any).customerId = result.custId;
+            this.customerId = result.custId;
             // Store last4 from token's mobile for validation on submit
             if (result.maskedMobile) {
               this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
@@ -133,7 +133,7 @@ export class RekycCustomer {
         window.history.replaceState({}, '', '/customer');
 
       } else if (urlId) {
-        (this as any).customerId = urlId;
+        this.customerId = urlId;
         window.history.replaceState({}, '', '/customer');
       }
 
@@ -430,10 +430,52 @@ export class RekycCustomer {
     clearInterval(this.sessionTimer);
     const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const newStatus = kycType === 'Full KYC' ? 'Pending VKYC' : 'Completed';
-    await updateCustomer(this.customerId, {
-      status: newStatus, kycType, source: 'Digital', completedDate: today, linkActive: false,
-      reminders: [...(this.cust?.reminders || []), { ch: 'System', date: today, status: 'KYC submitted via digital portal' }],
-    } as any);
+
+    // Record exactly which steps were completed in this journey
+    const updates: any = {
+      status: newStatus,
+      kycType,
+      source: 'Digital',
+      completedDate: today,
+      linkActive: false,
+      reminders: [...(this.cust?.reminders || []), {
+        ch: 'System', date: today,
+        status: `KYC submitted via digital portal — ${kycType}`,
+      }],
+    };
+
+    // PAN step — completed if panVerified
+    if (this.panVerified) {
+      updates.panStep = { status: 'Verified', date: today, pan: this.panNum, name: this.panName };
+    }
+
+    // Aadhaar/POI/POA step — completed if DigiLocker or Aadhaar OTP was done
+    if (this.digilockerVerified) {
+      updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
+      updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
+    } else if (this.otpVals['adho']?.filter(Boolean).length === 6) {
+      updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
+      updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
+    }
+
+    // Document upload step
+    if (this.uploadedDocs['docF'] || this.uploadedDocs['docB']) {
+      updates.docUploadDate = today;
+    }
+
+    // VKYC step
+    if (kycType === 'Full KYC') {
+      updates.vkycStep = { status: 'Pending', date: null };
+    } else if (kycType === 'Self-Declaration') {
+      updates.vkycStep = { status: 'N/A', date: today };
+    }
+
+    // Constitution change
+    if (this.newConstitution) {
+      updates.constitution = this.newConstitution;
+    }
+
+    await updateCustomer(this.customerId, updates);
     try { this.cust = await fetchCustomer(this.customerId); } catch(e) {}
     this.go('success');
   }
