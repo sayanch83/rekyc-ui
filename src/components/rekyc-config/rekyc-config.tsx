@@ -47,7 +47,12 @@ export class RekycConfig {
     this.err = '';
     this.cust = null;
     try {
-      const r = await fetch(`${apiBase()}/api/demo/config/${id}`);
+      // Try demo/config endpoint first, fall back to customers/:id
+      let r = await fetch(`${apiBase()}/api/demo/config/${id}`);
+      if (r.status === 404) {
+        // Endpoint not deployed yet — fall back to full customer record
+        r = await fetch(`${apiBase()}/api/customers/${id}`);
+      }
       if (!r.ok) throw new Error(`API returned ${r.status}`);
       const d: Cust = await r.json();
       this.cust    = d;
@@ -56,9 +61,9 @@ export class RekycConfig {
       this.fEmail  = d.email  || '';
       this.fDue    = d.due    || '';
       this.fStatus = d.status || '';
-      this.fRisk   = d.risk   || 'Low';
+      this.fRisk   = (d as any).risk   || 'Low';
     } catch(e: any) {
-      this.err = `Could not load data — ${e.message}. Check API URL.`;
+      this.err = `Could not load data — ${e.message}. Check API connection.`;
     } finally { this.loading = false; }
   }
 
