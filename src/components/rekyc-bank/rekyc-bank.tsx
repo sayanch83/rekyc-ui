@@ -108,7 +108,11 @@ export class RekycBank {
   }
 
   chIcon(ch: string) {
-    return ch;
+    if (ch === 'WhatsApp') return '💬';
+    if (ch === 'SMS')      return '📱';
+    if (ch === 'Email')    return '✉';
+    if (ch === 'System')   return '⚙';
+    return '📋';
   }
 
   // ── Render helpers ──
