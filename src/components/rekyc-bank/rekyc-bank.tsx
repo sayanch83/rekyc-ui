@@ -471,6 +471,9 @@ export class RekycBank {
   }
 
   renderDashboard(d: Customer | null, all: Customer[], totalPending: number, totalCompleted: number, totalOverdue: number) {
+    // If a customer is selected — show full detail screen instead of table
+    if (d) return this.renderDetailScreen(d);
+
     return (
       <div class="dash-content">
         {/* Top bar */}
@@ -492,7 +495,6 @@ export class RekycBank {
             </div>
           </div>
 
-          {/* Stat cards */}
           <div class="stats-row">
             {this.renderStatCard('Total Triggered', all.length, '📋', '#074994')}
             {this.renderStatCard('Active / Pending', totalPending, '⏳', '#B8860B')}
@@ -500,7 +502,6 @@ export class RekycBank {
             {this.renderStatCard('Rejected', totalOverdue, '❌', '#900909')}
           </div>
 
-          {/* Filters */}
           <div class="filter-row">
             {this.renderFilterBtn('all', 'All Cases')}
             {this.renderFilterBtn('Link Generated', 'Link Generated')}
@@ -514,9 +515,8 @@ export class RekycBank {
           </div>
         </div>
 
-        {/* Table + detail */}
         <div class="main-body">
-          <div class="table-area">
+          <div class="table-area" style={{ width: '100%' }}>
             <div class="table-header-row">
               <span class="table-count">{this.filtered.length} records</span>
             </div>
@@ -542,8 +542,130 @@ export class RekycBank {
               </table>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
 
-          {d && this.renderDetail(d)}
+  renderDetailScreen(d: Customer) {
+    const docs = d.documents || [];
+    const reminders = d.reminders || [];
+    const pendingCount = docs.filter(x => x.status === 'pending').length;
+    const toastParts = this.toast ? this.toast.split(':') : [];
+    const toastType = toastParts[0];
+    const toastMsg = toastParts.slice(1).join(':');
+
+    return (
+      <div class="detail-screen">
+        {/* ── Top bar ── */}
+        <div class="ds-topbar">
+          <button class="ds-back-btn" onClick={() => { this.selected = null; this.toast = null; }}>
+            ← Return to Dashboard
+          </button>
+          <div class="ds-title-area">
+            <div class="ds-avatar">{d.name.split(' ').map((n: string) => n[0]).join('').slice(0,2)}</div>
+            <div>
+              <div class="ds-name">{d.name}</div>
+              <div class="ds-sub">{d.id} &bull; {d.acct} &bull; {d.mobile}</div>
+            </div>
+          </div>
+          <div class="ds-status-area">
+            <span class={`badge-xs ${this.statusStyle(d.status)}`}>{d.status}</span>
+            {(d as any).risk && this.renderRiskBadge((d as any).risk)}
+            {d.status !== 'Completed' && (
+              <button class="btn-regen" onClick={() => this.doRegenLink()}>🔄 Regenerate Link</button>
+            )}
+          </div>
+        </div>
+
+        {this.toast && <div class={toastType === 'ok' ? 'toast good' : 'toast bad'} style={{ margin: '0 24px 0' }}>{toastMsg}</div>}
+
+        {/* ── Body grid ── */}
+        <div class="ds-body">
+
+          {/* ── Column 1: Customer info + KYC steps + link ── */}
+          <div class="ds-card">
+            <div class="ds-card-title">Customer Information</div>
+            <div class="ds-info-grid">
+              <div class="ds-info-row"><span class="ds-lbl">Full Name</span><span class="ds-val">{d.name}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Mobile</span><span class="ds-val">{d.mobile}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Account</span><span class="ds-val">{d.acct}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Relationship</span><span class="ds-val">{(d as any).relationship || 'Savings Account'}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">KYC Due Date</span><span class="ds-val ds-val-warn">{d.due}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Zone</span><span class="ds-val">{(d as any).zone || '-'}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">City</span><span class="ds-val">{(d as any).city || '-'}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Assigned To</span><span class="ds-val">{(d as any).assignedTo || 'Unassigned'}</span></div>
+              <div class="ds-info-row"><span class="ds-lbl">Source</span><span class="ds-val">{d.source || '-'}</span></div>
+              {(d as any).kycType && <div class="ds-info-row"><span class="ds-lbl">KYC Type</span><span class="ds-val">{(d as any).kycType}</span></div>}
+            </div>
+          </div>
+
+          {/* ── Column 2: KYC verification steps ── */}
+          <div class="ds-card">
+            <div class="ds-card-title">KYC Verification Status</div>
+            <div class="kyc-steps">
+              {this.renderKycStep('PAN Validation', (d as any).panStep)}
+              {this.renderKycStep('POI Validation', (d as any).poiStep)}
+              {this.renderKycStep('POA Validation', (d as any).poaStep)}
+              {this.renderKycStep('Video KYC (VKYC)', (d as any).vkycStep)}
+            </div>
+            {(d as any).declarationDate && (
+              <div class="ds-declaration">
+                <div class="ds-decl-title">Self-Declaration</div>
+                <div class="ds-decl-row"><span class="ds-lbl">Date</span><span class="ds-val">{(d as any).declarationDate}</span></div>
+                {(d as any).declarationName && <div class="ds-decl-row"><span class="ds-lbl">Signed by</span><span class="ds-val">{(d as any).declarationName}</span></div>}
+              </div>
+            )}
+
+            <div class="ds-card-title" style={{ marginTop: '16px' }}>Re-KYC Link</div>
+            <div class="link-card">
+              <div>
+                <span class={d.linkActive ? 'link-badge active' : 'link-badge'}>{d.linkActive ? '● Active' : '● Inactive'}</span>
+                {d.linkExpiry && <span class="link-expiry">&nbsp;Expires: {d.linkExpiry}</span>}
+              </div>
+            </div>
+
+            {d.agent && (
+              <div class="agent-card" style={{ marginTop: '12px' }}>
+                <div class="agent-label">BRANCH AGENT</div>
+                <div class="agent-detail"><strong>{d.agent.name}</strong> &bull; {d.agent.date}</div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Column 3: Documents ── */}
+          <div class="ds-card ds-card-docs">
+            <div class="ds-doc-header">
+              <div class="ds-card-title">Uploaded Documents</div>
+              {pendingCount > 0 && <span class="pending-count-badge">{pendingCount} pending review</span>}
+            </div>
+            {docs.length === 0
+              ? <div class="empty-docs">No documents submitted yet</div>
+              : docs.map(doc => this.renderDocCard(doc))
+            }
+          </div>
+
+          {/* ── Column 4: Communication history ── */}
+          <div class="ds-card">
+            <div class="ds-card-title">Communication History</div>
+            {reminders.length === 0
+              ? <div class="empty-docs">No communications yet</div>
+              : <div class="timeline">
+                  {reminders.map((r, i) => (
+                    <div class="tl-item">
+                      {i < reminders.length - 1 && <div class="tl-line" />}
+                      <div class="tl-dot" style={{ background: r.ch === 'WhatsApp' ? '#25D366' : r.ch === 'Email' ? '#3067A6' : r.ch === 'System' ? '#9CA3AF' : '#10B981' }} />
+                      <div class="tl-body">
+                        <span class="tl-ch">{this.chIcon(r.ch)} {r.ch}</span>
+                        <span class="tl-date">{r.date}</span>
+                        {r.status && <span class="tl-status">{r.status}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
         </div>
       </div>
     );
