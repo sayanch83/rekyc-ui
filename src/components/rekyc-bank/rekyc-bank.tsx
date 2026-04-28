@@ -156,43 +156,78 @@ export class RekycBank {
   renderDocCard(doc: UploadedDoc) {
     const ds = this.docBadge(doc.status);
     const isRejecting = this.rejectingDocId === doc.id;
-    const docClass = 'doc-card' + (doc.status === 'pending' ? ' doc-pending' : doc.status === 'rejected' ? ' doc-rejected' : '');
+    const isPending = doc.status === 'pending';
+    const isApproved = doc.status === 'approved';
+    const isRejected = doc.status === 'rejected';
+
     return (
-      <div class={docClass}>
-        <div class="doc-header">
-          <div class="doc-icon">Doc</div>
-          <div class="doc-meta">
-            <div class="doc-name">{doc.name}</div>
-            <div class="doc-file">{doc.fileName} &bull; {doc.size}</div>
-            <div class="doc-uploader">Uploaded by: {doc.uploadedBy} &bull; {doc.uploadDate}</div>
+      <div class={`doc-card-v2 ${isPending ? 'doc-v2-pending' : isApproved ? 'doc-v2-approved' : isRejected ? 'doc-v2-rejected' : ''}`}>
+        {/* Doc header row */}
+        <div class="doc-v2-header">
+          <div class="doc-v2-icon">
+            {doc.name.toLowerCase().includes('pan') ? '🪪'
+              : doc.name.toLowerCase().includes('passport') ? '📘'
+              : doc.name.toLowerCase().includes('aadhaar') ? '🪪'
+              : doc.name.toLowerCase().includes('photo') ? '📷'
+              : '📄'}
           </div>
-          <span class={`badge-xs ${ds.cls}`}>{ds.label}</span>
+          <div class="doc-v2-meta">
+            <div class="doc-v2-name">{doc.name}</div>
+            <div class="doc-v2-file">{doc.fileName} &bull; {doc.size}</div>
+            <div class="doc-v2-uploader">Uploaded by {doc.uploadedBy} &bull; {doc.uploadDate}</div>
+          </div>
+          <span class={`doc-v2-badge ${ds.cls}`}>{ds.label}</span>
         </div>
+
+        {/* Document preview / actions */}
         {doc.fileId && (
-          <div class="doc-actions-row">
-            <a href={fileUrl(doc.fileId)} target="_blank" class="btn-view-doc">View</a>
-            <a href={fileUrl(doc.fileId)} download={doc.fileName} class="btn-dl-doc">Download</a>
+          <div class="doc-v2-preview-row">
+            <a href={fileUrl(doc.fileId)} target="_blank" class="doc-v2-btn-view">
+              <span>👁</span> View Document
+            </a>
+            <a href={fileUrl(doc.fileId)} download={doc.fileName} class="doc-v2-btn-dl">
+              <span>⬇</span> Download
+            </a>
           </div>
         )}
-        {doc.status !== 'pending' && doc.reviewedBy && (
-          <div class="doc-review">Reviewed by {doc.reviewedBy} on {doc.reviewDate}</div>
-        )}
-        {doc.status === 'rejected' && doc.rejectReason && (
-          <div class="doc-reject-reason">Reason: {doc.rejectReason}</div>
-        )}
-        {doc.status === 'pending' && !isRejecting && (
-          <div class="doc-btn-row">
-            <button class="btn-approve" onClick={() => this.doApprove(doc.id)}>Approve</button>
-            <button class="btn-reject" onClick={() => { this.rejectingDocId = doc.id; this.rejectReason = ''; }}>Reject</button>
+
+        {/* Review info */}
+        {!isPending && doc.reviewedBy && (
+          <div class="doc-v2-reviewed">
+            {isApproved ? '✓' : '✗'} {isApproved ? 'Approved' : 'Rejected'} by {doc.reviewedBy} &bull; {doc.reviewDate}
           </div>
         )}
+        {isRejected && doc.rejectReason && (
+          <div class="doc-v2-reject-reason">Reason: {doc.rejectReason}</div>
+        )}
+
+        {/* Approve / Reject actions for pending docs */}
+        {isPending && !isRejecting && (
+          <div class="doc-v2-actions">
+            <button class="doc-v2-approve" onClick={() => this.doApprove(doc.id)}>
+              ✓ Approve
+            </button>
+            <button class="doc-v2-reject" onClick={() => { this.rejectingDocId = doc.id; this.rejectReason = ''; }}>
+              ✗ Reject
+            </button>
+          </div>
+        )}
+
+        {/* Rejection reason form */}
         {isRejecting && (
-          <div class="reject-form">
-            <div class="reject-label">Rejection Reason *</div>
-            <textarea rows={2} onInput={(e: any) => { this.rejectReason = e.target.value; }}>{this.rejectReason}</textarea>
-            <div class="reject-row">
-              <button class="btn-reject-confirm" disabled={!this.rejectReason.trim()} onClick={() => this.doReject(doc.id)}>Reject &amp; Notify</button>
-              <button class="btn-reject-cancel" onClick={() => { this.rejectingDocId = null; this.rejectReason = ''; }}>Cancel</button>
+          <div class="doc-v2-reject-form">
+            <label class="reject-form-label">Rejection Reason <span style={{ color: '#900909' }}>*</span></label>
+            <textarea class="reject-form-textarea" rows={2} placeholder="Explain why this document cannot be accepted..."
+              onInput={(e: any) => { this.rejectReason = e.target.value; }}>{this.rejectReason}</textarea>
+            <div class="reject-form-btns">
+              <button class="doc-v2-reject-confirm" disabled={!this.rejectReason.trim()}
+                onClick={() => this.doReject(doc.id)}>
+                ✗ Reject &amp; Notify Customer
+              </button>
+              <button class="doc-v2-reject-cancel"
+                onClick={() => { this.rejectingDocId = null; this.rejectReason = ''; }}>
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -230,98 +265,99 @@ export class RekycBank {
     const toastType = toastParts[0];
     const toastMsg = toastParts.slice(1).join(':');
     const sc = d.status;
+    const needsReview = pendingCount > 0 || sc === 'Pending Verification';
 
     return (
-      <div class="detail">
+      <div class={needsReview ? 'detail detail-wide' : 'detail'}>
+
+        {/* ── Header ── */}
         <div class="detail-header">
-          <div>
-            <div class="det-name">{d.name}</div>
-            <div class="det-sub">{d.id} &bull; {d.acct} &bull; {d.mobile}</div>
-          </div>
-          <button class="close-btn" onClick={() => { this.selected = null; }}>✕</button>
-        </div>
-
-        <div class="info-grid">
-          <div class="info-cell">
-            <div class="info-label">STATUS</div>
-            <div class="info-val"><span class={`badge-xs ${this.statusStyle(sc)}`}>{sc}</span></div>
-          </div>
-          <div class="info-cell">
-            <div class="info-label">DUE DATE</div>
-            <div class="info-val">{d.due}</div>
-          </div>
-          <div class="info-cell">
-            <div class="info-label">RELATIONSHIP</div>
-            <div class="info-val">{(d as any).relationship || 'Savings Account'}</div>
-          </div>
-          <div class="info-cell">
-            <div class="info-label">ASSIGNED TO</div>
-            <div class="info-val">{(d as any).assignedTo || 'Unassigned'}</div>
-          </div>
-          <div class="info-cell">
-            <div class="info-label">ZONE</div>
-            <div class="info-val">{(d as any).zone || '-'}</div>
-          </div>
-          <div class="info-cell">
-            <div class="info-label">SOURCE</div>
-            <div class="info-val">{d.source || '-'}</div>
-          </div>
-        </div>
-
-        {d.agent && (
-          <div class="agent-card">
-            <div class="agent-label">BRANCH AGENT COLLECTION</div>
-            <div class="agent-detail">Agent: <strong>{d.agent.name}</strong> &bull; Collected: {d.agent.date}</div>
-          </div>
-        )}
-
-        {this.renderAgentGeo(d)}
-
-        {/* KYC Verification Steps */}
-        <div class="section-head">KYC Verification Status</div>
-        <div class="kyc-steps">
-          {this.renderKycStep('PAN Validation', (d as any).panStep)}
-          {this.renderKycStep('POI Validation', (d as any).poiStep)}
-          {this.renderKycStep('POA Validation', (d as any).poaStep)}
-          {this.renderKycStep('Video KYC (VKYC)', (d as any).vkycStep)}
-        </div>
-
-        {/* Documents */}
-        <div class="section-head" style={{ marginTop: '16px' }}>
-          <span>Uploaded Documents</span>
-          {pendingCount > 0 && <span class="pending-count">{pendingCount} PENDING</span>}
-        </div>
-        {this.toast && <div class={toastType === 'ok' ? 'toast good' : 'toast bad'}>{toastMsg}</div>}
-        {docs.length === 0
-          ? <div class="empty-docs">No documents submitted yet</div>
-          : docs.map(doc => this.renderDocCard(doc))
-        }
-
-        {/* Re-KYC Link */}
-        <div class="section-head" style={{ marginTop: '16px' }}>Re-KYC Link</div>
-        <div class="link-card">
-          <div>
-            <span class={d.linkActive ? 'link-badge active' : 'link-badge'}>{d.linkActive ? '● Active' : '● Inactive'}</span>
-            {d.linkExpiry && <span class="link-expiry">&nbsp; Expires: {d.linkExpiry}</span>}
-          </div>
-          {d.status !== 'Completed' && (
-            <button class="btn-regen" onClick={() => this.doRegenLink()}>🔄 Regenerate Link</button>
-          )}
-        </div>
-
-        {/* Communication History */}
-        <div class="section-head" style={{ marginTop: '16px' }}>Communication History</div>
-        <div class="timeline">
-          {reminders.map((r, i) => (
-            <div class="tl-item">
-              {i < reminders.length - 1 && <div class="tl-line" />}
-              <div class="tl-dot" style={{ background: r.ch === 'WhatsApp' ? '#25D366' : r.ch === 'Email' ? '#3067A6' : r.ch === 'System' ? '#9CA3AF' : '#10B981' }} />
-              <div class="tl-body">
-                <span class="tl-ch">{this.chIcon(r.ch)} {r.ch}</span>
-                <span class="tl-date">{r.date}</span>
-              </div>
+          <div class="det-header-left">
+            <div class="det-avatar">{d.name.split(' ').map((n: string) => n[0]).join('').slice(0,2)}</div>
+            <div>
+              <div class="det-name">{d.name}</div>
+              <div class="det-sub">{d.id} &bull; {d.acct} &bull; {d.mobile}</div>
             </div>
-          ))}
+          </div>
+          <div class="det-header-right">
+            <span class={`badge-xs ${this.statusStyle(sc)}`}>{sc}</span>
+            <button class="close-btn" onClick={() => { this.selected = null; }}>✕</button>
+          </div>
+        </div>
+
+        {/* ── Toast ── */}
+        {this.toast && <div class={toastType === 'ok' ? 'toast good' : 'toast bad'}>{toastMsg}</div>}
+
+        {/* ── Two-column layout for wide mode ── */}
+        <div class={needsReview ? 'det-body-wide' : 'det-body-narrow'}>
+
+          {/* Left column — customer info + KYC steps + link */}
+          <div class="det-col-left">
+            <div class="det-section-title">Customer Details</div>
+            <div class="info-grid-2">
+              <div class="ig2-cell"><div class="info-label">RELATIONSHIP</div><div class="info-val">{(d as any).relationship || 'Savings Account'}</div></div>
+              <div class="ig2-cell"><div class="info-label">DUE DATE</div><div class="info-val">{d.due}</div></div>
+              <div class="ig2-cell"><div class="info-label">ZONE</div><div class="info-val">{(d as any).zone || '-'}</div></div>
+              <div class="ig2-cell"><div class="info-label">RISK</div><div class="info-val">{(d as any).risk || '-'}</div></div>
+              <div class="ig2-cell"><div class="info-label">SOURCE</div><div class="info-val">{d.source || '-'}</div></div>
+              <div class="ig2-cell"><div class="info-label">ASSIGNED TO</div><div class="info-val">{(d as any).assignedTo || 'Unassigned'}</div></div>
+            </div>
+
+            {d.agent && (
+              <div class="agent-card">
+                <div class="agent-label">BRANCH AGENT</div>
+                <div class="agent-detail"><strong>{d.agent.name}</strong> &bull; {d.agent.date}</div>
+              </div>
+            )}
+            {this.renderAgentGeo(d)}
+
+            <div class="det-section-title" style={{ marginTop: '14px' }}>KYC Verification</div>
+            <div class="kyc-steps">
+              {this.renderKycStep('PAN Validation', (d as any).panStep)}
+              {this.renderKycStep('POI Validation', (d as any).poiStep)}
+              {this.renderKycStep('POA Validation', (d as any).poaStep)}
+              {this.renderKycStep('Video KYC (VKYC)', (d as any).vkycStep)}
+            </div>
+
+            <div class="det-section-title" style={{ marginTop: '14px' }}>Re-KYC Link</div>
+            <div class="link-card">
+              <div>
+                <span class={d.linkActive ? 'link-badge active' : 'link-badge'}>{d.linkActive ? '● Active' : '● Inactive'}</span>
+                {d.linkExpiry && <span class="link-expiry">&nbsp;Expires: {d.linkExpiry}</span>}
+              </div>
+              {d.status !== 'Completed' && (
+                <button class="btn-regen" onClick={() => this.doRegenLink()}>🔄 Regenerate Link</button>
+              )}
+            </div>
+
+            <div class="det-section-title" style={{ marginTop: '14px' }}>Communication</div>
+            <div class="timeline">
+              {reminders.slice(-5).map((r, i, arr) => (
+                <div class="tl-item">
+                  {i < arr.length - 1 && <div class="tl-line" />}
+                  <div class="tl-dot" style={{ background: r.ch === 'WhatsApp' ? '#25D366' : r.ch === 'Email' ? '#3067A6' : r.ch === 'System' ? '#9CA3AF' : '#10B981' }} />
+                  <div class="tl-body">
+                    <span class="tl-ch">{this.chIcon(r.ch)} {r.ch}</span>
+                    <span class="tl-date">{r.date}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right column — documents ── */}
+          <div class="det-col-right">
+            <div class="det-doc-header">
+              <div class="det-section-title">Uploaded Documents</div>
+              {pendingCount > 0 && (
+                <span class="pending-count-badge">{pendingCount} pending review</span>
+              )}
+            </div>
+            {docs.length === 0
+              ? <div class="empty-docs">No documents submitted yet</div>
+              : docs.map(doc => this.renderDocCard(doc))
+            }
+          </div>
         </div>
       </div>
     );
