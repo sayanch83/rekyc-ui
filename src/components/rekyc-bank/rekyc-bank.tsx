@@ -111,8 +111,8 @@ export class RekycBank {
     if (ch === 'WhatsApp') return '💬';
     if (ch === 'SMS')      return '📱';
     if (ch === 'Email')    return '✉';
-    if (ch === 'System')   return '⚙';
-    return '📋';
+    if (ch === 'System')   return '';
+    return '';
   }
 
   // ── Render helpers ──
@@ -165,13 +165,7 @@ export class RekycBank {
         {/* Doc header row */}
         <div class="doc-v2-header">
           <div class="doc-v2-icon">
-            {doc.name.toLowerCase().includes('pan') ? '🪪'
-              : doc.name.toLowerCase().includes('passport') ? '📘'
-              : doc.name.toLowerCase().includes('aadhaar') || doc.name.toLowerCase().includes('aadhar') ? '🪪'
-              : doc.name.toLowerCase().includes('voter') ? '📋'
-              : doc.name.toLowerCase().includes('photo') ? '📷'
-              : doc.name.toLowerCase().includes('licence') || doc.name.toLowerCase().includes('license') ? '🚗'
-              : '📄'}
+"DOC"
           </div>
           <div class="doc-v2-meta">
             <div class="doc-v2-name">{doc.name}</div>
@@ -182,16 +176,16 @@ export class RekycBank {
         </div>
 
         {/* View / Download — always shown if file exists */}
-        {doc.fileId && (
-          <div class="doc-v2-preview-row">
-            <a href={fileUrl(doc.fileId)} target="_blank" class="doc-v2-btn-view">
-              👁 View Document
-            </a>
-            <a href={fileUrl(doc.fileId)} download={doc.fileName} class="doc-v2-btn-dl">
-              ⬇ Download
-            </a>
-          </div>
-        )}
+        <div class="doc-v2-preview-row">
+          {doc.fileId
+            ? <a href={fileUrl(doc.fileId)} target="_blank" class="doc-v2-btn-view">View Document</a>
+            : <span class="doc-v2-btn-view doc-v2-btn-disabled">View Document</span>
+          }
+          {doc.fileId
+            ? <a href={fileUrl(doc.fileId)} download={doc.fileName} class="doc-v2-btn-dl">Download</a>
+            : <span class="doc-v2-btn-dl doc-v2-btn-disabled">Download</span>
+          }
+        </div>
 
         {/* Review result */}
         {!isPending && doc.reviewedBy && (
@@ -329,7 +323,7 @@ export class RekycBank {
                 {d.linkExpiry && <span class="link-expiry">&nbsp;Expires: {d.linkExpiry}</span>}
               </div>
               {d.status !== 'Completed' && (
-                <button class="btn-regen" onClick={() => this.doRegenLink()}>🔄 Regenerate Link</button>
+                <button class="btn-regen" onClick={() => this.doRegenLink()}>Regenerate Link</button>
               )}
             </div>
 
@@ -450,11 +444,11 @@ export class RekycBank {
             <span class="sidebar-brand">National Bank</span>
           </div>
           <div class="sidebar-section">Re-KYC</div>
-          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>📋 Dashboard</div>
-          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>📊 Analytics</div>
-          <div class={this.page === 'bulk' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'bulk'; }}>⬆ Bulk Upload</div>
+          <div class={this.page === 'dashboard' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'dashboard'; }}>Dashboard</div>
+          <div class={this.page === 'analytics' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'analytics'; }}>Analytics</div>
+          <div class={this.page === 'bulk' ? 'sidebar-item active' : 'sidebar-item'} onClick={() => { this.page = 'bulk'; }}>Bulk Upload</div>
           <div class="sidebar-section">Settings</div>
-          <div class="sidebar-item" onClick={() => { window.open('/config','_blank'); }}>⚙ Configuration</div>
+          <div class="sidebar-item" onClick={() => { window.open('/config','_blank'); }}>Configuration</div>
         </div>
 
         {/* Main content */}
@@ -496,10 +490,10 @@ export class RekycBank {
           </div>
 
           <div class="stats-row">
-            {this.renderStatCard('Total Triggered', all.length, '📋', '#074994')}
-            {this.renderStatCard('Active / Pending', totalPending, '⏳', '#B8860B')}
-            {this.renderStatCard('Completed', totalCompleted, '✅', '#0B7A5B')}
-            {this.renderStatCard('Rejected', totalOverdue, '❌', '#900909')}
+            {this.renderStatCard('Total Triggered', all.length, '', '#074994')}
+            {this.renderStatCard('Active / Pending', totalPending, '', '#B8860B')}
+            {this.renderStatCard('Completed', totalCompleted, '', '#0B7A5B')}
+            {this.renderStatCard('Rejected', totalOverdue, '', '#900909')}
           </div>
 
           <div class="filter-row">
@@ -573,7 +567,7 @@ export class RekycBank {
             <span class={`badge-xs ${this.statusStyle(d.status)}`}>{d.status}</span>
             {(d as any).risk && this.renderRiskBadge((d as any).risk)}
             {d.status !== 'Completed' && (
-              <button class="btn-regen" onClick={() => this.doRegenLink()}>🔄 Regenerate Link</button>
+              <button class="btn-regen" onClick={() => this.doRegenLink()}>Regenerate Link</button>
             )}
           </div>
         </div>

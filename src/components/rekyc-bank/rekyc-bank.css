@@ -310,3 +310,9 @@ tr.row-active:hover td{background:#EBF2FB}
 /* ── Document cards in detail screen ── */
 .ds-card-docs .doc-card-v2 { margin-bottom:12px }
 .ds-card-docs .doc-card-v2:last-child { margin-bottom:0 }
+
+/* Doc icon — text instead of emoji */
+.doc-v2-icon-text { width:36px;height:36px;border-radius:6px;background:#E8F0F8;color:#074994;font:700 10px 'Outfit',sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0;letter-spacing:.5px }
+
+/* Disabled view/download button */
+.doc-v2-btn-disabled { opacity:.4;cursor:not-allowed;pointer-events:none }
