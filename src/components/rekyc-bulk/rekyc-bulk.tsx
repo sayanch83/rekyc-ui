@@ -1,7 +1,13 @@
 import { Component, h, State } from '@stencil/core';
 import { API } from '../../utils/constants';
 
-interface UploadRow { name: string; mobile: string; email: string; acct: string; relationship: string; zone: string; city: string; due: string; risk: string; }
+interface UploadRow {
+  name: string; mobile: string; email: string; acct: string;
+  relationship: string; zone: string; city: string; due: string; risk: string;
+  poiType: string; poiNo: string; poiExpiry: string;
+  poaType: string; poaNo: string; poaExpiry: string;
+  addr1: string; addr2: string; addr3: string; state: string; pincode: string;
+}
 interface ErrorRow extends UploadRow { error: string; row: number; }
 interface ResultRow extends UploadRow { id: string; status: 'created' | 'duplicate' | 'error'; error?: string; }
 
@@ -35,6 +41,17 @@ export class ReKycBulk {
     const dueIdx     = idx('due');
     const riskIdx    = idx('risk');
     const cityIdx    = idx('city');
+    const poiTypeIdx = idx('poi_type') >= 0 ? idx('poi_type') : idx('poi type');
+    const poiNoIdx   = idx('poi_no')   >= 0 ? idx('poi_no')   : idx('poi doc');
+    const poiExpIdx  = idx('poi_exp')  >= 0 ? idx('poi_exp')  : idx('poi expiry');
+    const poaTypeIdx = idx('poa_type') >= 0 ? idx('poa_type') : idx('poa type');
+    const poaNoIdx   = idx('poa_no')   >= 0 ? idx('poa_no')   : idx('poa doc');
+    const poaExpIdx  = idx('poa_exp')  >= 0 ? idx('poa_exp')  : idx('poa expiry');
+    const addr1Idx   = idx('addr1')    >= 0 ? idx('addr1')    : idx('address_1');
+    const addr2Idx   = idx('addr2')    >= 0 ? idx('addr2')    : idx('address_2');
+    const addr3Idx   = idx('addr3')    >= 0 ? idx('addr3')    : idx('address_3');
+    const stateIdx   = idx('state');
+    const pinIdx     = idx('pin')      >= 0 ? idx('pin')      : idx('pincode');
 
     const rows: UploadRow[] = [];
     const errors: ErrorRow[] = [];
@@ -52,6 +69,17 @@ export class ReKycBulk {
         city: cols[cityIdx] || '',
         due: cols[dueIdx] || '30 Apr 2026',
         risk: cols[riskIdx] || 'Low',
+        poiType:  cols[poiTypeIdx] || '',
+        poiNo:    cols[poiNoIdx]   || '',
+        poiExpiry:cols[poiExpIdx]  || '',
+        poaType:  cols[poaTypeIdx] || '',
+        poaNo:    cols[poaNoIdx]   || '',
+        poaExpiry:cols[poaExpIdx]  || '',
+        addr1:    cols[addr1Idx]   || '',
+        addr2:    cols[addr2Idx]   || '',
+        addr3:    cols[addr3Idx]   || '',
+        state:    cols[stateIdx]   || '',
+        pincode:  cols[pinIdx]     || '',
       };
 
       const rowErrors = [];
@@ -105,12 +133,19 @@ export class ReKycBulk {
           mobile: mobileFormatted, email: row.email,
           dob: '', pan: 'PENDING', aadhaar: 'PENDING',
           constitution: 'Individual', relationship: row.relationship,
-          address: '', zone: row.zone, city: row.city || '', assignedTo: null,
+          address: [row.addr1, row.addr2, row.addr3].filter(Boolean).join(', '),
+          addr1: row.addr1, addr2: row.addr2, addr3: row.addr3,
+          state: row.state, pincode: row.pincode,
+          zone: row.zone, city: row.city || '', assignedTo: null,
           due: row.due, status: 'Link Generated', kycType: null, risk: riskVal,
-          docsOnFile: [], reminders: [{ ch: 'System', date: new Date().toLocaleDateString('en-IN'), status: 'Record created via bulk upload' }],
+          reminders: [{ ch: 'System', date: new Date().toLocaleDateString('en-IN'), status: 'Record created via bulk upload' }],
           linkActive: true, linkExpiry: row.due + ', 11:59 PM',
           source: null, agent: null, completedDate: null, agentGeo: null,
           documents: [], panStep: null, poiStep: null, poaStep: null, vkycStep: null,
+          docsOnFile: [
+            ...(row.poiType ? [{ name: row.poiType, meta: `No. ${row.poiNo || 'N/A'}${row.poiExpiry ? '  •  Exp: ' + row.poiExpiry : ''}`, valid: true }] : []),
+            ...(row.poaType && row.poaType !== row.poiType ? [{ name: row.poaType, meta: `No. ${row.poaNo || 'N/A'}${row.poaExpiry ? '  •  Exp: ' + row.poaExpiry : ''}`, valid: true }] : []),
+          ],
         };
         const r = await fetch(`${API}/api/customers/bulk`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -141,8 +176,8 @@ export class ReKycBulk {
     const errorRows = this.results.filter(r => r.status !== 'created');
     if (errorRows.length === 0) return;
     const csv = [
-      'Row,Name,Mobile,Account,Relationship,Zone,Risk,Status,Error',
-      ...errorRows.map((r, i) => `${i+1},"${r.name}","${r.mobile}","${r.acct}","${r.relationship}","${r.zone}","${r.risk || 'Low'}","${r.status}","${r.error || ''}"`)
+      'Row,Name,Mobile,Account,Zone,Risk,POI Type,POA Type,Status,Error',
+      ...errorRows.map((r, i) => `${i+1},"${r.name}","${r.mobile}","${r.acct}","${r.zone}","${r.risk || 'Low'}","${r.poiType || ''}","${r.poaType || ''}","${r.status}","${r.error || ''}"`)
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -152,7 +187,7 @@ export class ReKycBulk {
   }
 
   downloadTemplate() {
-    const csv = 'Name *,Mobile *,Email,Account Number *,Relationship Type,Zone *,City,Due Date,Risk *\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,Mumbai,30 Apr 2026,Low';
+    const csv = 'Name *,Mobile *,Email,Account Number *,Relationship Type,Zone *,City,Due Date,Risk *,POI Type,POI Doc No,POI Expiry,POA Type,POA Doc No,POA Expiry,Address Line 1,Address Line 2,Address Line 3,State,Pincode\nRajesh Kumar,+919876543210,rajesh@email.com,XXXX1234,Savings Account,West,Mumbai,30 Apr 2026,Low,Passport,Z1234567,15 Dec 2027,Aadhaar,XXXX XXXX 7842,,Flat 402 Sunrise Apts,MG Road Andheri West,Mumbai,Maharashtra,400058';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -179,7 +214,7 @@ export class ReKycBulk {
             <div class="upload-instructions">
               <div class="inst-title">Required columns in your CSV:</div>
               <div class="inst-cols">
-                {['Name *', 'Mobile *', 'Email', 'Account Number *', 'Relationship Type', 'Zone *', 'City', 'Due Date', 'Risk *'].map(c =>
+                {['Name *', 'Mobile *', 'Email', 'Account Number *', 'Zone *', 'Risk *', 'POI Type', 'POI Doc No', 'POI Expiry', 'POA Type', 'POA Doc No', 'POA Expiry', 'Address Line 1', 'State', 'Pincode', 'City', 'Relationship Type', 'Due Date'].map(c =>
                   <span class={c.includes('*') ? 'col-badge required' : 'col-badge'}>{c}</span>
                 )}
               </div>

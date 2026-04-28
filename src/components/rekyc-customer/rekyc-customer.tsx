@@ -182,6 +182,41 @@ export class RekycCustomer {
     this.uploadedDocs = {}; this.sessionExpiry = 0;
   }
 
+  // ── Determine if Full KYC is mandatory based on docs on file ──
+  requiresFullKyc(): { required: boolean; reason: string } {
+    const cust = this.cust;
+    if (!cust) return { required: false, reason: '' };
+
+    const docs = cust.docsOnFile || [];
+    const today = new Date();
+    const threeMonthsLater = new Date();
+    threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+
+    // Check if POI is missing
+    const hasPoi = cust.poiStep?.status === 'Verified' || docs.length > 0;
+    const hasPoa = cust.poaStep?.status === 'Verified' || docs.length > 1;
+
+    if (!hasPoi || !hasPoa) {
+      return { required: true, reason: 'One or more identity documents are missing from your records.' };
+    }
+
+    // Check for expired or expiring docs
+    for (const doc of docs) {
+      const expMatch = doc.meta?.match(/Exp:\s*(\d{1,2}\s+\w+\s+\d{4})/i);
+      if (expMatch) {
+        const expDate = new Date(expMatch[1]);
+        if (expDate < today) {
+          return { required: true, reason: `${doc.name} has expired and must be renewed.` };
+        }
+        if (expDate < threeMonthsLater) {
+          return { required: true, reason: `${doc.name} is expiring within 3 months and must be renewed.` };
+        }
+      }
+    }
+
+    return { required: false, reason: '' };
+  }
+
   startSession() {
     clearInterval(this.sessionTimer);
     this.sessionExpiry = Date.now() + 15 * 60 * 1000;
@@ -1052,21 +1087,48 @@ export class RekycCustomer {
         )}
 
         <h3 class="sec-title" style={{ marginTop: '20px' }}>How would you like to proceed?</h3>
-        <div class="action-card" onClick={() => this.go('confirm')}>
-          <div class="ac-icon green">✓</div>
-          <div class="ac-body"><div class="ac-title">Details are Correct</div><div class="ac-desc">Self-declare all details are accurate</div><div class="ac-time">⏱ ~2 min</div></div>
-          <div class="ac-arrow">›</div>
-        </div>
-        <div class="action-card" onClick={() => this.go('minor_choice')}>
-          <div class="ac-icon blue">✎</div>
-          <div class="ac-body"><div class="ac-title">Update Address / Mobile</div><div class="ac-desc">Address or mobile number changed</div><div class="ac-time">⏱ ~5 min</div></div>
-          <div class="ac-arrow">›</div>
-        </div>
-        <div class="action-card" onClick={() => this.go('full_intro')}>
-          <div class="ac-icon amber">⚑</div>
-          <div class="ac-body"><div class="ac-title">Name / Constitution Change or Document Expired</div><div class="ac-desc">Identity details changed or a document needs renewal</div><div class="ac-time">⏱ ~10 min</div></div>
-          <div class="ac-arrow">›</div>
-        </div>
+        {(() => {
+          const { required, reason } = this.requiresFullKyc();
+          return (
+            <div>
+              {required && (
+                <div class="full-kyc-notice">
+                  <span class="fkn-icon">⚠</span>
+                  <span>{reason} <strong>Full KYC is required.</strong></span>
+                </div>
+              )}
+              <div class={{ 'action-card': true, 'action-card-disabled': required }}
+                onClick={() => { if (!required) this.go('confirm'); }}>
+                <div class="ac-icon green">✓</div>
+                <div class="ac-body">
+                  <div class="ac-title">Details are Correct</div>
+                  <div class="ac-desc">{required ? 'Not available — Full KYC required' : 'Self-declare all details are accurate'}</div>
+                  <div class="ac-time">⏱ ~2 min</div>
+                </div>
+                <div class="ac-arrow">{required ? '✕' : '›'}</div>
+              </div>
+              <div class={{ 'action-card': true, 'action-card-disabled': required }}
+                onClick={() => { if (!required) this.go('minor_choice'); }}>
+                <div class="ac-icon blue">✎</div>
+                <div class="ac-body">
+                  <div class="ac-title">Update Address / Mobile</div>
+                  <div class="ac-desc">{required ? 'Not available — Full KYC required' : 'Address or mobile number changed'}</div>
+                  <div class="ac-time">⏱ ~5 min</div>
+                </div>
+                <div class="ac-arrow">{required ? '✕' : '›'}</div>
+              </div>
+              <div class="action-card" onClick={() => this.go('full_intro')}>
+                <div class="ac-icon amber">⚑</div>
+                <div class="ac-body">
+                  <div class="ac-title">Full KYC{required ? ' (Required)' : ''}</div>
+                  <div class="ac-desc">Complete identity verification with documents</div>
+                  <div class="ac-time">⏱ ~10 min</div>
+                </div>
+                <div class="ac-arrow">›</div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
 
