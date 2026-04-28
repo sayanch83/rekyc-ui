@@ -153,13 +153,19 @@ export class RekycAnalytics {
 
   componentDidLoad() { this.initCharts(); this.loadLiveData(); }
   private lastDrawKey = '';
+  private chartsDrawn = false;
   componentDidUpdate() {
-    // Only redraw when chart-relevant data actually changed — not on every state update
     if (!this.chartsLoaded) return;
-    const key = JSON.stringify(this.liveData) + this.view + this.filterZone + this.selectedZone;
+    // Only redraw on meaningful data/selection changes — not structural re-renders
+    const key = JSON.stringify(this.liveData) + this.view + this.selectedZone;
     if (key !== this.lastDrawKey) {
       this.lastDrawKey = key;
-      setTimeout(() => this.drawCharts(), 50);
+      // If only selectedZone changed, just redraw city chart — not all charts
+      if (this.chartsDrawn && this.canvasCity) {
+        this.drawCityChart();
+      } else {
+        setTimeout(() => this.drawCharts(), 50);
+      }
     }
   }
 
@@ -186,7 +192,43 @@ export class RekycAnalytics {
     document.head.appendChild(s);
   }
 
+  drawCityChart() {
+    const Chart = (window as any).Chart;
+    if (!Chart || !this.canvasCity) return;
+    const ZONE_CITIES: Record<string, { city: string; pending: number }[]> = {
+      West:    [{ city: 'Mumbai', pending: 38 }, { city: 'Pune', pending: 22 }, { city: 'Ahmedabad', pending: 18 }, { city: 'Surat', pending: 6 }],
+      North:   [{ city: 'Delhi', pending: 52 }, { city: 'Chandigarh', pending: 16 }, { city: 'Lucknow', pending: 14 }, { city: 'Jaipur', pending: 12 }],
+      South:   [{ city: 'Bangalore', pending: 44 }, { city: 'Chennai', pending: 36 }, { city: 'Hyderabad', pending: 28 }, { city: 'Kochi', pending: 16 }],
+      East:    [{ city: 'Kolkata', pending: 28 }, { city: 'Bhubaneswar', pending: 14 }, { city: 'Patna', pending: 10 }, { city: 'Guwahati', pending: 8 }],
+      Central: [{ city: 'Bhopal', pending: 22 }, { city: 'Nagpur', pending: 18 }, { city: 'Indore', pending: 16 }, { city: 'Raipur', pending: 12 }],
+    };
+    const zone = this.selectedZone || 'West';
+    const cities = ZONE_CITIES[zone] || ZONE_CITIES['West'];
+    // Destroy only the city chart instance
+    const existing = Object.values((Chart as any).instances || {}).find(
+      (inst: any) => inst.canvas === this.canvasCity
+    ) as any;
+    if (existing) { try { existing.destroy(); } catch(e) {} }
+    new Chart(this.canvasCity, {
+      type: 'bar',
+      data: {
+        labels: cities.map(d => d.city),
+        datasets: [{ label: 'Pending cases', data: cities.map(d => d.pending),
+          backgroundColor: ['#074994','#3067A6','#5585BC','#89AAD0','#ACC2DB'], borderRadius: 6 }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
   drawCharts() {
+    this.chartsDrawn = true;
     const Chart = (window as any).Chart;
     if (!Chart) return;
     // Destroy all
@@ -257,37 +299,8 @@ export class RekycAnalytics {
       });
     }
 
-    // City concentration — horizontal bar for selected zone
-    if (this.canvasCity) {
-      const ZONE_CITIES: Record<string, { city: string; pending: number }[]> = {
-        West:    [{ city: 'Mumbai', pending: 38 }, { city: 'Pune', pending: 22 }, { city: 'Ahmedabad', pending: 18 }, { city: 'Surat', pending: 6 }],
-        North:   [{ city: 'Delhi', pending: 52 }, { city: 'Chandigarh', pending: 16 }, { city: 'Lucknow', pending: 14 }, { city: 'Jaipur', pending: 12 }],
-        South:   [{ city: 'Bangalore', pending: 44 }, { city: 'Chennai', pending: 36 }, { city: 'Hyderabad', pending: 28 }, { city: 'Kochi', pending: 16 }],
-        East:    [{ city: 'Kolkata', pending: 28 }, { city: 'Bhubaneswar', pending: 14 }, { city: 'Patna', pending: 10 }, { city: 'Guwahati', pending: 8 }],
-        Central: [{ city: 'Bhopal', pending: 22 }, { city: 'Nagpur', pending: 18 }, { city: 'Indore', pending: 16 }, { city: 'Raipur', pending: 12 }],
-      };
-      const zone = this.selectedZone || 'West';
-      const cities = ZONE_CITIES[zone] || ZONE_CITIES['West'];
-      new Chart(this.canvasCity, {
-        type: 'bar',
-        data: {
-          labels: cities.map(d => d.city),
-          datasets: [{ label: 'Pending cases', data: cities.map(d => d.pending),
-            backgroundColor: ['#074994','#3067A6','#5585BC','#89AAD0'], borderRadius: 6, borderSkipped: false }]
-        },
-        options: {
-          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: `${zone} Zone — City-wise Pending`, font: { size: 12 }, color: '#0D1F35', padding: { bottom: 8 } }
-          },
-          scales: {
-            x: { beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } },
-            y: { grid: { display: false }, ticks: { font: { size: 11 } } }
-          }
-        }
-      });
-    }
+    // City chart — delegate to drawCityChart
+    this.drawCityChart();
   }
 
   // ── Computed totals ──
@@ -688,28 +701,32 @@ export class RekycAnalytics {
               </div>
             </div>
 
-            {/* Zone & City concentration charts */}
-            <div class="charts-row" style={{ marginTop: '16px' }}>
-              <div class="chart-card">
-                <div class="chart-title">Pending Cases by Zone</div>
-                <div class="chart-sub">Click a zone to drill down by city</div>
-                <div style={{ height: '200px', position: 'relative' }}>
-                  <canvas ref={el => this.canvasZone = el as HTMLCanvasElement} />
+            {/* Zone & City concentration — single card with drill-down */}
+            <div class="chart-card" style={{ gridColumn: 'span 3', marginTop: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
+                {/* Zone pie */}
+                <div style={{ flex: '0 0 320px' }}>
+                  <div class="chart-title">Pending Cases by Zone</div>
+                  <div class="chart-sub">
+                    {this.selectedZone
+                      ? <span>Showing <strong>{this.selectedZone}</strong> zone — <span style={{ cursor: 'pointer', color: 'var(--pri)', textDecoration: 'underline' }} onClick={() => { this.selectedZone = ''; }}>Clear ✕</span></span>
+                      : 'Click a zone to see city breakdown'}
+                  </div>
+                  <div style={{ height: '220px', position: 'relative' }}>
+                    <canvas ref={el => this.canvasZone = el as HTMLCanvasElement} />
+                  </div>
                 </div>
-              </div>
-              <div class="chart-card" style={{ gridColumn: 'span 2' }}>
-                <div class="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  City-wise Concentration
-                  {this.selectedZone && (
-                    <span class="zone-filter-pill active" style={{ fontSize: '11px', cursor: 'pointer' }}
-                      onClick={() => { this.selectedZone = ''; }}>
-                      {this.selectedZone} ✕
-                    </span>
-                  )}
-                </div>
-                <div class="chart-sub">{this.selectedZone ? `Pending cases in ${this.selectedZone} zone` : 'Showing West zone — click pie chart to switch zone'}</div>
-                <div style={{ height: '200px', position: 'relative' }}>
-                  <canvas ref={el => this.canvasCity = el as HTMLCanvasElement} />
+                {/* Divider */}
+                <div style={{ width: '1px', background: '#E2E8F0', alignSelf: 'stretch', flexShrink: '0' }} />
+                {/* City bar */}
+                <div style={{ flex: '1', minWidth: '0' }}>
+                  <div class="chart-title">
+                    {this.selectedZone ? `${this.selectedZone} Zone` : 'West Zone'} — City-wise Pending
+                  </div>
+                  <div class="chart-sub">Pending case count per city</div>
+                  <div style={{ height: '220px', position: 'relative' }}>
+                    <canvas ref={el => this.canvasCity = el as HTMLCanvasElement} />
+                  </div>
                 </div>
               </div>
             </div>
