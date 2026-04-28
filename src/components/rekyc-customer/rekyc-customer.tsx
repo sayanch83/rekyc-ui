@@ -56,7 +56,6 @@ function downloadAck(custId: string, custName: string, kycType: string) {
 @Component({ tag: 'rekyc-customer', styleUrl: 'rekyc-customer.css', shadow: false })
 export class RekycCustomer {
   @Prop({ mutable: true }) customerId: string = 'KYC-4528';
-  @Prop() linkToken: string = ''; // passed from router after token resolution
 
   @State() screen: Screen = 'whatsapp';
   @State() hist: Screen[] = ['whatsapp'];
@@ -96,6 +95,7 @@ export class RekycCustomer {
   @State() digilockerLoading = false;
   @State() newConstitution = '';
   @State() simLoading = false;
+  @State() linkToken = '';          // from sessionStorage (set by router)
   @State() resumeMode = false; // true when resuming a partial journey
   @State() linkError = '';
   @State() tokenValidating = false;
@@ -105,31 +105,24 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
-    // By the time this runs, rekyc-app has already resolved ?token= to customerId
-    // and passed both as Props. We just need to:
-    // 1. Get maskedMobile from token (for last-4 validation)
-    // 2. Handle DigiLocker callback
-    // 3. Load the correct customer
-
-    const resolvedCustId = this.customerId; // already correct — set by router
+    // Router (rekyc-app) already resolved ?token= to customerId and stored token in sessionStorage
+    const resolvedCustId = this.customerId;
 
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-
-      // If token link — get maskedMobile for last-4 validation
-      if (this.linkToken) {
-        try {
-          const result = await validateLinkToken(this.linkToken);
-          if (result.valid && result.maskedMobile) {
-            this.tokenMobileLast4 = result.maskedMobile.replace(/\D/g,'').slice(-4);
-          }
-        } catch(e) { /* non-critical */ }
+      // Read token set by router
+      const storedToken = sessionStorage.getItem('rekyc_link_token') || '';
+      const storedMasked = sessionStorage.getItem('rekyc_masked_mobile') || '';
+      if (storedToken) {
+        this.linkToken = storedToken;
+        if (storedMasked) {
+          this.tokenMobileLast4 = storedMasked.replace(/\D/g,'').slice(-4);
+        }
         this.screen = 'browser';
         this.hist   = ['browser'];
-        window.history.replaceState({}, '', '/customer');
       }
 
       // DigiLocker callback
+      const params = new URLSearchParams(window.location.search);
       const dlVerified = params.get('dl_verified');
       const dlError    = params.get('dl_error');
       if (dlVerified) {
@@ -152,7 +145,7 @@ export class RekycCustomer {
       }
     }
 
-    // Load correct customer — resolvedCustId is guaranteed correct from router
+    // Load correct customer — resolvedCustId guaranteed correct from router
     try { this.cust = await fetchCustomer(resolvedCustId); }
     catch (e) { console.error('Failed to load customer:', e); }
   }
@@ -853,7 +846,11 @@ export class RekycCustomer {
         <button class="btn-primary" disabled={!this.otpFilled('auth') || this.otpLocked}
           onClick={() => this.verifyOtpCode('auth', this.e164Mobile, () => {
             // Consume the token so link can't be reused
-            if (this.linkToken) consumeLinkToken(this.linkToken);
+            if (this.linkToken) {
+              consumeLinkToken(this.linkToken);
+              sessionStorage.removeItem('rekyc_link_token');
+              sessionStorage.removeItem('rekyc_masked_mobile');
+            }
             this.startSession();
             this.go('consent');
           })}>
