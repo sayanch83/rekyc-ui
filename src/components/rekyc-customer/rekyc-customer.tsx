@@ -105,13 +105,11 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
-    // IMPORTANT: Stencil passes Props after componentWillLoad runs in the child.
-    // So this.customerId may still be 'KYC-4528' even if the router resolved a different ID.
-    // The router stores the resolved custId in sessionStorage as the authoritative source.
-    let resolvedCustId = this.customerId; // fallback default
+    let resolvedCustId = this.customerId;
+    let storedToken = ''; // declared in outer scope for use after window block
 
     if (typeof window !== 'undefined') {
-      const storedToken  = sessionStorage.getItem('rekyc_link_token') || '';
+      storedToken                = sessionStorage.getItem('rekyc_link_token') || '';
       const storedMasked = sessionStorage.getItem('rekyc_masked_mobile') || '';
       const storedCustId = sessionStorage.getItem('rekyc_cust_id') || '';
 
@@ -152,9 +150,18 @@ export class RekycCustomer {
     console.log(`[rekyc] Loading customer: ${resolvedCustId}`);
     try {
       this.cust = await fetchCustomer(resolvedCustId);
-      // Update customerId to match so updateCustomer/uploadDocument use correct ID
       this.customerId = resolvedCustId;
-      console.log(`[rekyc] Loaded: ${this.cust?.name}`);
+      console.log(`[rekyc] Loaded: ${this.cust?.name}, status: ${this.cust?.status}`);
+
+      // If arriving via token link AND journey already completed — skip to already_submitted
+      // Don't even show mobile entry — no point authenticating just to see a completion message
+      if (storedToken && this.cust) {
+        const done = ['Completed','Pending VKYC','Pending Verification'].includes(this.cust.status);
+        if (done) {
+          this.screen = 'already_submitted';
+          this.hist   = ['already_submitted'];
+        }
+      }
     } catch (e) { console.error('Failed to load customer:', e); }
   }
   disconnectedCallback() {
@@ -509,30 +516,40 @@ export class RekycCustomer {
       }],
     };
 
-    // PAN step — completed if panVerified
-    if (this.panVerified) {
-      updates.panStep = { status: 'Verified', date: today, pan: this.panNum, name: this.panName };
-    }
-
-    // Aadhaar/POI/POA step — completed if DigiLocker or Aadhaar OTP was done
-    if (this.digilockerVerified) {
-      updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
-      updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
-    } else if (this.otpVals['adho']?.filter(Boolean).length === 6) {
-      updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
-      updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
-    }
-
-    // Document upload step
-    if (this.uploadedDocs['docF'] || this.uploadedDocs['docB']) {
-      updates.docUploadDate = today;
-    }
-
-    // VKYC step
-    if (kycType === 'Full KYC') {
-      updates.vkycStep = { status: 'Pending', date: null };
-    } else if (kycType === 'Self-Declaration') {
+    // Only record steps that ACTUALLY happened in this journey
+    if (kycType === 'Self-Declaration') {
+      // Self-declaration: customer confirmed existing details with digital signature
+      // No PAN verification, no Aadhaar, no docs, no VKYC
+      updates.declarationDate = today;
+      updates.declarationName = this.sigText || '';
+      updates.panStep  = null;
+      updates.poiStep  = null;
+      updates.poaStep  = null;
       updates.vkycStep = { status: 'N/A', date: today };
+
+    } else if (kycType === 'Partial Update') {
+      // Mobile/address update only
+      updates.partialUpdateDate = today;
+
+    } else if (kycType === 'Full KYC') {
+      // PAN — only if verified in this session
+      if (this.panVerified && this.panNum) {
+        updates.panStep = { status: 'Verified', date: today, pan: this.panNum, name: this.panName };
+      }
+      // Aadhaar — only if DigiLocker or OTP was actually completed
+      if (this.digilockerVerified) {
+        updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
+        updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'DigiLocker' };
+      } else if (this.otpVals['adho']?.filter((v: string) => v).length === 6) {
+        updates.poiStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
+        updates.poaStep = { status: 'Verified', date: today, type: 'Aadhaar', mode: 'OTP' };
+      }
+      // Documents — only if uploaded in this session
+      if (this.uploadedDocs && (this.uploadedDocs['docF'] || this.uploadedDocs['docB'])) {
+        updates.docUploadDate = today;
+      }
+      // VKYC — pending after full KYC submission
+      updates.vkycStep = { status: 'Pending', date: null };
     }
 
     // Constitution change
