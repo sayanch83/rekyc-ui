@@ -316,3 +316,37 @@ tr.row-active:hover td{background:#EBF2FB}
 
 /* Disabled view/download button */
 .doc-v2-btn-disabled { opacity:.4;cursor:not-allowed;pointer-events:none }
+
+/* ── Final KYC Decision Card ── */
+.ds-card-final { grid-column: span 2 }
+.ds-card-final-pending { border-color: rgba(7,73,148,.2); background: #EBF2FB }
+.ds-card-final-ok      { border-color: rgba(11,122,91,.3); background: #E6F5F0 }
+.ds-card-final-rej     { border-color: rgba(144,9,9,.25); background: #FDE8E8 }
+
+.final-ready-notice { font-size:13px;color:#475569;margin-bottom:14px;line-height:1.5;padding:10px 14px;background:#fff;border-radius:8px;border:1px solid #E2E8F0 }
+.final-decide-btn { padding:11px 28px;border-radius:8px;border:none;background:#074994;color:#fff;font:700 14px 'Outfit',sans-serif;cursor:pointer;transition:all .15s }
+.final-decide-btn:hover { background:#2D6FBF;transform:translateY(-1px) }
+
+.final-form-label { font-size:12px;font-weight:700;color:#475569;display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px }
+.final-form-textarea { width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font:13px 'DM Sans',sans-serif;resize:none;outline:none;box-sizing:border-box;margin-bottom:12px }
+.final-form-textarea:focus { border-color:#074994 }
+.final-form-btns { display:flex;gap:10px;align-items:center }
+.final-form-hint { font-size:11.5px;color:#900909;margin-top:8px }
+
+.final-btn-approve { padding:11px 28px;border-radius:8px;border:none;background:#0B7A5B;color:#fff;font:700 13px 'Outfit',sans-serif;cursor:pointer;transition:all .15s }
+.final-btn-approve:hover { background:#0A6B4F }
+.final-btn-reject  { padding:11px 28px;border-radius:8px;border:1.5px solid #900909;background:#fff;color:#900909;font:700 13px 'Outfit',sans-serif;cursor:pointer;transition:all .15s }
+.final-btn-reject:hover:not(:disabled) { background:#FDE8E8 }
+.final-btn-reject:disabled { opacity:.4;cursor:not-allowed }
+.final-btn-cancel  { padding:11px 20px;border-radius:8px;border:1px solid #E2E8F0;background:#fff;color:#64748B;font:600 13px 'DM Sans',sans-serif;cursor:pointer }
+.final-btn-cancel:hover { background:#F0F4F8 }
+
+.final-decided { display:flex;align-items:flex-start;gap:14px }
+.final-decided-icon { width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0 }
+.final-ok  { background:#0B7A5B;color:#fff }
+.final-rej { background:#900909;color:#fff }
+.final-decided-status { font:700 15px 'Outfit',sans-serif;color:#0D1F35;margin-bottom:4px }
+.final-decided-by { font-size:12.5px;color:#64748B;margin-bottom:4px }
+.final-decided-remarks { font-size:12.5px;color:#475569;padding:6px 10px;background:rgba(255,255,255,.6);border-radius:6px;margin-top:6px }
+
+.final-waiting { font-size:13px;color:#474994;padding:10px;background:#fff;border-radius:8px;border:1px solid rgba(7,73,148,.15) }

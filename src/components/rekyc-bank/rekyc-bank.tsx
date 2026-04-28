@@ -13,6 +13,8 @@ export class RekycBank {
   @State() loading = true;
   @State() apiError: string | null = null;
   @State() searchQuery = '';
+  @State() kycRemarks = '';
+  @State() finalReviewing = false; // show the final decision panel
   private pollInterval: any;
 
   async componentWillLoad() { await this.load(); }
@@ -45,8 +47,8 @@ export class RekycBank {
 
   async doApprove(docId: string) {
     await reviewDocument(this.selected!.id, docId, 'approve', '', 'Bank Officer');
-    this.toast = 'ok:Document approved successfully';
-    setTimeout(() => { this.toast = null; }, 3000);
+    this.toast = 'ok:Document approved';
+    this.selected = await fetchCustomer(this.selected!.id);
     await this.load();
   }
 
@@ -55,8 +57,31 @@ export class RekycBank {
     await reviewDocument(this.selected!.id, docId, 'reject', this.rejectReason, 'Bank Officer');
     this.rejectingDocId = null;
     this.rejectReason = '';
-    this.toast = 'err:Document rejected - customer notified';
-    setTimeout(() => { this.toast = null; }, 3000);
+    this.toast = 'err:Document rejected — customer notified';
+    this.selected = await fetchCustomer(this.selected!.id);
+    await this.load();
+  }
+
+  async doFinalKyc(decision: 'approve' | 'reject') {
+    if (!this.kycRemarks.trim() && decision === 'reject') return;
+    const { API } = await import('../../utils/constants');
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const newStatus = decision === 'approve' ? 'Completed' : 'Rejected';
+    const rem = [...(this.selected!.reminders || []), {
+      ch: 'System', date: today,
+      status: `KYC ${newStatus} by KYC Officer${this.kycRemarks ? ' — ' + this.kycRemarks : ''}`
+    }];
+    await fetch(`${API}/api/customers/${this.selected!.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, completedDate: today, kycRemarks: this.kycRemarks, reviewedBy: 'KYC Officer', reviewedDate: today, reminders: rem }),
+    });
+    this.finalReviewing = false;
+    this.kycRemarks = '';
+    this.toast = decision === 'approve'
+      ? 'ok:KYC Approved — status updated to Completed'
+      : 'err:KYC Rejected — customer has been notified';
+    this.selected = await fetchCustomer(this.selected!.id);
     await this.load();
   }
 
@@ -545,6 +570,8 @@ export class RekycBank {
     const docs = d.documents || [];
     const reminders = d.reminders || [];
     const pendingCount = docs.filter(x => x.status === 'pending').length;
+    const allDocsReviewed = docs.length > 0 && pendingCount === 0;
+    const needsFinalDecision = d.status === 'Pending Verification' && allDocsReviewed;
     const toastParts = this.toast ? this.toast.split(':') : [];
     const toastType = toastParts[0];
     const toastMsg = toastParts.slice(1).join(':');
@@ -638,6 +665,78 @@ export class RekycBank {
               : docs.map(doc => this.renderDocCard(doc))
             }
           </div>
+
+          {/* ── Final KYC Decision ── */}
+          {(needsFinalDecision || this.finalReviewing || ['Completed','Rejected'].includes(d.status)) && (
+            <div class={`ds-card ds-card-final ${d.status === 'Completed' ? 'ds-card-final-ok' : d.status === 'Rejected' ? 'ds-card-final-rej' : 'ds-card-final-pending'}`}>
+              <div class="ds-card-title">
+                {d.status === 'Completed' ? 'KYC Decision — Approved'
+                  : d.status === 'Rejected' ? 'KYC Decision — Rejected'
+                  : 'Final KYC Decision'}
+              </div>
+
+              {/* Already decided */}
+              {(d.status === 'Completed' || d.status === 'Rejected') && (
+                <div class="final-decided">
+                  <div class={`final-decided-icon ${d.status === 'Completed' ? 'final-ok' : 'final-rej'}`}>
+                    {d.status === 'Completed' ? '✓' : '✗'}
+                  </div>
+                  <div>
+                    <div class="final-decided-status">{d.status === 'Completed' ? 'KYC Approved' : 'KYC Rejected'}</div>
+                    {(d as any).reviewedBy && <div class="final-decided-by">by {(d as any).reviewedBy} &bull; {(d as any).reviewedDate}</div>}
+                    {(d as any).kycRemarks && <div class="final-decided-remarks">Remarks: {(d as any).kycRemarks}</div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Ready for decision */}
+              {needsFinalDecision && !this.finalReviewing && d.status === 'Pending Verification' && (
+                <div>
+                  <div class="final-ready-notice">
+                    All documents have been reviewed. You can now take a final decision on this KYC application.
+                  </div>
+                  <button class="final-decide-btn" onClick={() => { this.finalReviewing = true; this.kycRemarks = ''; }}>
+                    Take Final Decision →
+                  </button>
+                </div>
+              )}
+
+              {/* Decision form */}
+              {this.finalReviewing && d.status === 'Pending Verification' && (
+                <div class="final-form">
+                  <label class="final-form-label">Remarks / Observations</label>
+                  <textarea class="final-form-textarea" rows={3}
+                    placeholder="Enter remarks for this KYC decision (optional for approval, required for rejection)..."
+                    onInput={(e: any) => { this.kycRemarks = e.target.value; }}>{this.kycRemarks}</textarea>
+                  <div class="final-form-btns">
+                    <button class="final-btn-approve" onClick={() => this.doFinalKyc('approve')}>
+                      ✓ Approve KYC
+                    </button>
+                    <button class="final-btn-reject" disabled={!this.kycRemarks.trim()}
+                      onClick={() => this.doFinalKyc('reject')}>
+                      ✗ Reject KYC
+                    </button>
+                    <button class="final-btn-cancel" onClick={() => { this.finalReviewing = false; this.kycRemarks = ''; }}>
+                      Cancel
+                    </button>
+                  </div>
+                  {!this.kycRemarks.trim() && (
+                    <div class="final-form-hint">Remarks are required to reject a KYC application</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Show prompt when docs still pending */}
+          {d.status === 'Pending Verification' && pendingCount > 0 && (
+            <div class="ds-card ds-card-final ds-card-final-pending">
+              <div class="ds-card-title">Final KYC Decision</div>
+              <div class="final-waiting">
+                Review all {pendingCount} pending document{pendingCount > 1 ? 's' : ''} before taking a final decision.
+              </div>
+            </div>
+          )}
 
           {/* ── Column 4: Communication history ── */}
           <div class="ds-card">
