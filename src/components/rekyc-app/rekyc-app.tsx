@@ -23,9 +23,10 @@ export class RekycApp {
         if (result.valid && result.custId) {
           this.customerId = result.custId;
         }
-        // Store token in sessionStorage so customer component can read it
+        // Store everything in sessionStorage — Prop timing is unreliable
         sessionStorage.setItem('rekyc_link_token', token);
         sessionStorage.setItem('rekyc_masked_mobile', result.maskedMobile || '');
+        sessionStorage.setItem('rekyc_cust_id', result.custId || '');
       } catch(e) {
         sessionStorage.setItem('rekyc_link_token', token);
       }

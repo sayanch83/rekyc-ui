@@ -105,18 +105,21 @@ export class RekycCustomer {
   private cooldownTimer: any;
 
   async componentWillLoad() {
-    // Router (rekyc-app) already resolved ?token= to customerId and stored token in sessionStorage
-    const resolvedCustId = this.customerId;
+    // IMPORTANT: Stencil passes Props after componentWillLoad runs in the child.
+    // So this.customerId may still be 'KYC-4528' even if the router resolved a different ID.
+    // The router stores the resolved custId in sessionStorage as the authoritative source.
+    let resolvedCustId = this.customerId; // fallback default
 
     if (typeof window !== 'undefined') {
-      // Read token set by router
-      const storedToken = sessionStorage.getItem('rekyc_link_token') || '';
+      const storedToken  = sessionStorage.getItem('rekyc_link_token') || '';
       const storedMasked = sessionStorage.getItem('rekyc_masked_mobile') || '';
+      const storedCustId = sessionStorage.getItem('rekyc_cust_id') || '';
+
       if (storedToken) {
+        // Token link — use stored custId, not the Prop
         this.linkToken = storedToken;
-        if (storedMasked) {
-          this.tokenMobileLast4 = storedMasked.replace(/\D/g,'').slice(-4);
-        }
+        if (storedCustId) resolvedCustId = storedCustId;
+        if (storedMasked) this.tokenMobileLast4 = storedMasked.replace(/\D/g,'').slice(-4);
         this.screen = 'browser';
         this.hist   = ['browser'];
       }
@@ -145,9 +148,14 @@ export class RekycCustomer {
       }
     }
 
-    // Load correct customer — resolvedCustId guaranteed correct from router
-    try { this.cust = await fetchCustomer(resolvedCustId); }
-    catch (e) { console.error('Failed to load customer:', e); }
+    // Use resolvedCustId — from sessionStorage if token link, otherwise Prop
+    console.log(`[rekyc] Loading customer: ${resolvedCustId}`);
+    try {
+      this.cust = await fetchCustomer(resolvedCustId);
+      // Update customerId to match so updateCustomer/uploadDocument use correct ID
+      this.customerId = resolvedCustId;
+      console.log(`[rekyc] Loaded: ${this.cust?.name}`);
+    } catch (e) { console.error('Failed to load customer:', e); }
   }
   disconnectedCallback() {
     clearInterval(this.sessionTimer);
