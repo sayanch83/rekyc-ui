@@ -21,10 +21,6 @@ export namespace Components {
           * @default 'KYC-4528'
          */
         "customerId": string;
-        /**
-          * @default ''
-         */
-        "linkToken": string;
     }
 }
 declare global {
@@ -89,15 +85,10 @@ declare namespace LocalJSX {
           * @default 'KYC-4528'
          */
         "customerId"?: string;
-        /**
-          * @default ''
-         */
-        "linkToken"?: string;
     }
 
     interface RekycCustomerAttributes {
         "customerId": string;
-        "linkToken": string;
     }
 
     interface IntrinsicElements {

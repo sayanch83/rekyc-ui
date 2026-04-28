@@ -143,11 +143,8 @@ export class RekycAnalytics {
   @State() view: 'zm' | 'rm' = 'zm';
   @State() expanded: Record<string, boolean> = {};
   @State() filterZone = 'all';
-  @State() liveTotal = 0;
-  @State() liveCompleted = 0;
-  @State() livePending = 0;
-  @State() liveRejected = 0;
-  @State() liveLoaded = false;
+  @State() liveData: { total: number; completed: number; pending: number; rejected: number } | null = null;
+  @State() selectedZone = ''; // for city drill-down
   private canvasTrend: HTMLCanvasElement;
   private canvasDoughnut: HTMLCanvasElement;
   private canvasZone: HTMLCanvasElement;
@@ -155,9 +152,15 @@ export class RekycAnalytics {
   private chartsLoaded = false;
 
   componentDidLoad() { this.initCharts(); this.loadLiveData(); }
+  private lastDrawKey = '';
   componentDidUpdate() {
-    // Only redraw charts — do not re-fetch live data (prevents flicker loop)
-    if (this.chartsLoaded) setTimeout(() => this.drawCharts(), 50);
+    // Only redraw when chart-relevant data actually changed — not on every state update
+    if (!this.chartsLoaded) return;
+    const key = JSON.stringify(this.liveData) + this.view + this.filterZone + this.selectedZone;
+    if (key !== this.lastDrawKey) {
+      this.lastDrawKey = key;
+      setTimeout(() => this.drawCharts(), 50);
+    }
   }
 
   async loadLiveData() {
@@ -165,17 +168,13 @@ export class RekycAnalytics {
       const apiBase = (window as any).__REKYC_API__ || 'https://rekyc-work-production.up.railway.app';
       const r = await fetch(`${apiBase}/api/customers`);
       const customers: any[] = await r.json();
-      // Batch ALL state updates in one tick to prevent multiple re-renders / flicker
-      const total     = customers.length;
-      const completed = customers.filter(c => c.status === 'Completed').length;
-      const pending   = customers.filter(c => !['Completed','Rejected'].includes(c.status)).length;
-      const rejected  = customers.filter(c => c.status === 'Rejected').length;
-      // Single state object update — Stencil batches writes in the same microtask
-      this.liveTotal     = total;
-      this.liveCompleted = completed;
-      this.livePending   = pending;
-      this.liveRejected  = rejected;
-      this.liveLoaded    = true;
+      // Single @State() assignment = single re-render, no flicker
+      this.liveData = {
+        total:     customers.length,
+        completed: customers.filter(c => c.status === 'Completed').length,
+        pending:   customers.filter(c => !['Completed','Rejected'].includes(c.status)).length,
+        rejected:  customers.filter(c => c.status === 'Rejected').length,
+      };
     } catch(e) { console.warn('Analytics live data failed:', e); }
   }
 
@@ -221,59 +220,67 @@ export class RekycAnalytics {
       });
     }
 
-    // Zone-wise concentration bar chart
+    // Zone pending share — pie chart (clickable → city drilldown)
     if (this.canvasZone) {
       const zoneNames = Object.keys(ZONES);
-      const zoneData = Object.values(ZONES);
+      const pendingCounts = Object.values(ZONES).map(z => z.pending);
+      const zoneColors = ['#074994','#0B7A5B','#B8860B','#900909','#6D28D9'];
       new Chart(this.canvasZone, {
-        type: 'bar',
+        type: 'pie',
         data: {
           labels: zoneNames,
-          datasets: [
-            { label: 'Completed', data: zoneData.map(z => z.completed), backgroundColor: '#0B7A5B', borderRadius: 4, stack: 'a' },
-            { label: 'Pending',   data: zoneData.map(z => z.pending),   backgroundColor: '#FFAA00', borderRadius: 0, stack: 'a' },
-            { label: 'Rejected',  data: zoneData.map(z => z.rejected),  backgroundColor: '#900909', borderRadius: 0, stack: 'a' },
-          ]
+          datasets: [{ data: pendingCounts, backgroundColor: zoneColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } } },
-          scales: {
-            x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
-            y: { stacked: true, beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } }
+          plugins: {
+            legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 },
+              generateLabels: (chart: any) => chart.data.labels.map((label: string, i: number) => ({
+                text: `${label}  ${chart.data.datasets[0].data[i]}`,
+                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                strokeStyle: '#fff', lineWidth: 2, hidden: false, index: i,
+              }))
+            }},
+            tooltip: { callbacks: { label: (ctx: any) => {
+              const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
+              const pct = Math.round(ctx.parsed / total * 100);
+              return ` ${ctx.label}: ${ctx.parsed} pending (${pct}%)`;
+            }}}
+          },
+          onClick: (_: any, elements: any[]) => {
+            if (elements.length > 0) {
+              const zone = Object.keys(ZONES)[elements[0].index];
+              this.selectedZone = this.selectedZone === zone ? '' : zone;
+            }
           }
         }
       });
     }
 
-    // City-wise concentration horizontal bar chart
+    // City concentration — horizontal bar for selected zone
     if (this.canvasCity) {
-      const cityData = [
-        { city: 'Mumbai',    total: 142, completed: 68 },
-        { city: 'Delhi',     total: 118, completed: 52 },
-        { city: 'Bangalore', total: 96,  completed: 44 },
-        { city: 'Chennai',   total: 88,  completed: 38 },
-        { city: 'Hyderabad', total: 76,  completed: 32 },
-        { city: 'Pune',      total: 64,  completed: 28 },
-        { city: 'Ahmedabad', total: 58,  completed: 24 },
-        { city: 'Chandigarh',total: 44,  completed: 18 },
-      ];
-      const liveCities = this.liveLoaded
-        ? cityData.map(d => ({ ...d, total: Math.round(d.total * this.liveTotal / 686) }))
-        : cityData;
+      const ZONE_CITIES: Record<string, { city: string; pending: number }[]> = {
+        West:    [{ city: 'Mumbai', pending: 38 }, { city: 'Pune', pending: 22 }, { city: 'Ahmedabad', pending: 18 }, { city: 'Surat', pending: 6 }],
+        North:   [{ city: 'Delhi', pending: 52 }, { city: 'Chandigarh', pending: 16 }, { city: 'Lucknow', pending: 14 }, { city: 'Jaipur', pending: 12 }],
+        South:   [{ city: 'Bangalore', pending: 44 }, { city: 'Chennai', pending: 36 }, { city: 'Hyderabad', pending: 28 }, { city: 'Kochi', pending: 16 }],
+        East:    [{ city: 'Kolkata', pending: 28 }, { city: 'Bhubaneswar', pending: 14 }, { city: 'Patna', pending: 10 }, { city: 'Guwahati', pending: 8 }],
+        Central: [{ city: 'Bhopal', pending: 22 }, { city: 'Nagpur', pending: 18 }, { city: 'Indore', pending: 16 }, { city: 'Raipur', pending: 12 }],
+      };
+      const zone = this.selectedZone || 'West';
+      const cities = ZONE_CITIES[zone] || ZONE_CITIES['West'];
       new Chart(this.canvasCity, {
         type: 'bar',
         data: {
-          labels: liveCities.map(d => d.city),
-          datasets: [
-            { label: 'Total KYC Due', data: liveCities.map(d => d.total), backgroundColor: 'rgba(7,73,148,.15)', borderColor: '#074994', borderWidth: 1, borderRadius: 4 },
-            { label: 'Completed',     data: liveCities.map(d => d.completed), backgroundColor: '#0B7A5B', borderRadius: 4 },
-          ]
+          labels: cities.map(d => d.city),
+          datasets: [{ label: 'Pending cases', data: cities.map(d => d.pending),
+            backgroundColor: ['#074994','#3067A6','#5585BC','#89AAD0'], borderRadius: 6, borderSkipped: false }]
         },
         options: {
-          indexAxis: 'y',
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } } },
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: `${zone} Zone — City-wise Pending`, font: { size: 12 }, color: '#0D1F35', padding: { bottom: 8 } }
+          },
           scales: {
             x: { beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } },
             y: { grid: { display: false }, ticks: { font: { size: 11 } } }
@@ -627,20 +634,20 @@ export class RekycAnalytics {
             {/* Stat boxes */}
             <div class="stat-boxes-row">
               {this.renderStatBox('Total KYC Due',
-                this.liveLoaded ? this.liveTotal : t.total,
+                this.liveData !== null ? (this.liveData?.total || 0) : t.total,
                 '#074994','#E8F0F8','100%')}
               {this.renderStatBox('Completed',
-                this.liveLoaded ? this.liveCompleted : t.completed,
-                '#0B7A5B','#E6F5F0', this.liveLoaded ? Math.round(this.liveCompleted/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.completed/t.total*100)+'%')}
+                this.liveData !== null ? (this.liveData?.completed || 0) : t.completed,
+                '#0B7A5B','#E6F5F0', this.liveData !== null ? Math.round((this.liveData?.completed || 0)/Math.max((this.liveData?.total || 0),1)*100)+'%' : Math.round(t.completed/t.total*100)+'%')}
               {this.renderStatBox('Pending',
-                this.liveLoaded ? this.livePending : t.pending,
-                '#B8860B','#FFF8E6', this.liveLoaded ? Math.round(this.livePending/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.pending/t.total*100)+'%')}
+                this.liveData !== null ? (this.liveData?.pending || 0) : t.pending,
+                '#B8860B','#FFF8E6', this.liveData !== null ? Math.round((this.liveData?.pending || 0)/Math.max((this.liveData?.total || 0),1)*100)+'%' : Math.round(t.pending/t.total*100)+'%')}
               {this.renderStatBox('Rejected',
-                this.liveLoaded ? this.liveRejected : t.rejected,
-                '#900909','#FDE8E8', this.liveLoaded ? Math.round(this.liveRejected/Math.max(this.liveTotal,1)*100)+'%' : Math.round(t.rejected/t.total*100)+'%')}
+                this.liveData !== null ? (this.liveData?.rejected || 0) : t.rejected,
+                '#900909','#FDE8E8', this.liveData !== null ? Math.round((this.liveData?.rejected || 0)/Math.max((this.liveData?.total || 0),1)*100)+'%' : Math.round(t.rejected/t.total*100)+'%')}
               {this.renderStatBox('High Risk', 92, '#6D28D9', '#F3E8FF', '8.5%')}
               {this.renderStatBox('Avg TAT', '4.2d', '#0D1F35', '#F0F4F8', 'SLA: 5d')}
-              {this.liveLoaded && <div class="live-indicator">● Live</div>}
+              {this.liveData !== null && <div class="live-indicator">● Live</div>}
             </div>
 
             {/* Charts — taller */}
@@ -684,15 +691,23 @@ export class RekycAnalytics {
             {/* Zone & City concentration charts */}
             <div class="charts-row" style={{ marginTop: '16px' }}>
               <div class="chart-card">
-                <div class="chart-title">Zone-wise Concentration</div>
-                <div class="chart-sub">KYC status distribution across all zones</div>
+                <div class="chart-title">Pending Cases by Zone</div>
+                <div class="chart-sub">Click a zone to drill down by city</div>
                 <div style={{ height: '200px', position: 'relative' }}>
                   <canvas ref={el => this.canvasZone = el as HTMLCanvasElement} />
                 </div>
               </div>
               <div class="chart-card" style={{ gridColumn: 'span 2' }}>
-                <div class="chart-title">City-wise Concentration</div>
-                <div class="chart-sub">Top cities by KYC volume</div>
+                <div class="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  City-wise Concentration
+                  {this.selectedZone && (
+                    <span class="zone-filter-pill active" style={{ fontSize: '11px', cursor: 'pointer' }}
+                      onClick={() => { this.selectedZone = ''; }}>
+                      {this.selectedZone} ✕
+                    </span>
+                  )}
+                </div>
+                <div class="chart-sub">{this.selectedZone ? `Pending cases in ${this.selectedZone} zone` : 'Showing West zone — click pie chart to switch zone'}</div>
                 <div style={{ height: '200px', position: 'relative' }}>
                   <canvas ref={el => this.canvasCity = el as HTMLCanvasElement} />
                 </div>
