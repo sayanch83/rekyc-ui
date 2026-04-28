@@ -167,41 +167,43 @@ export class RekycBank {
           <div class="doc-v2-icon">
             {doc.name.toLowerCase().includes('pan') ? '🪪'
               : doc.name.toLowerCase().includes('passport') ? '📘'
-              : doc.name.toLowerCase().includes('aadhaar') ? '🪪'
+              : doc.name.toLowerCase().includes('aadhaar') || doc.name.toLowerCase().includes('aadhar') ? '🪪'
+              : doc.name.toLowerCase().includes('voter') ? '📋'
               : doc.name.toLowerCase().includes('photo') ? '📷'
+              : doc.name.toLowerCase().includes('licence') || doc.name.toLowerCase().includes('license') ? '🚗'
               : '📄'}
           </div>
           <div class="doc-v2-meta">
             <div class="doc-v2-name">{doc.name}</div>
             <div class="doc-v2-file">{doc.fileName} &bull; {doc.size}</div>
-            <div class="doc-v2-uploader">Uploaded by {doc.uploadedBy} &bull; {doc.uploadDate}</div>
+            <div class="doc-v2-uploader">By {doc.uploadedBy} &bull; {doc.uploadDate}</div>
           </div>
           <span class={`doc-v2-badge ${ds.cls}`}>{ds.label}</span>
         </div>
 
-        {/* Document preview / actions */}
+        {/* View / Download — always shown if file exists */}
         {doc.fileId && (
           <div class="doc-v2-preview-row">
             <a href={fileUrl(doc.fileId)} target="_blank" class="doc-v2-btn-view">
-              <span>👁</span> View Document
+              👁 View Document
             </a>
             <a href={fileUrl(doc.fileId)} download={doc.fileName} class="doc-v2-btn-dl">
-              <span>⬇</span> Download
+              ⬇ Download
             </a>
           </div>
         )}
 
-        {/* Review info */}
+        {/* Review result */}
         {!isPending && doc.reviewedBy && (
-          <div class="doc-v2-reviewed">
-            {isApproved ? '✓' : '✗'} {isApproved ? 'Approved' : 'Rejected'} by {doc.reviewedBy} &bull; {doc.reviewDate}
+          <div class={`doc-v2-reviewed ${isApproved ? 'doc-v2-reviewed-ok' : 'doc-v2-reviewed-fail'}`}>
+            {isApproved ? '✓ Approved' : '✗ Rejected'} by {doc.reviewedBy} &bull; {doc.reviewDate}
           </div>
         )}
         {isRejected && doc.rejectReason && (
           <div class="doc-v2-reject-reason">Reason: {doc.rejectReason}</div>
         )}
 
-        {/* Approve / Reject actions for pending docs */}
+        {/* Approve / Reject — only for pending */}
         {isPending && !isRejecting && (
           <div class="doc-v2-actions">
             <button class="doc-v2-approve" onClick={() => this.doApprove(doc.id)}>
@@ -213,11 +215,12 @@ export class RekycBank {
           </div>
         )}
 
-        {/* Rejection reason form */}
+        {/* Rejection form */}
         {isRejecting && (
           <div class="doc-v2-reject-form">
             <label class="reject-form-label">Rejection Reason <span style={{ color: '#900909' }}>*</span></label>
-            <textarea class="reject-form-textarea" rows={2} placeholder="Explain why this document cannot be accepted..."
+            <textarea class="reject-form-textarea" rows={2}
+              placeholder="Explain why this document cannot be accepted..."
               onInput={(e: any) => { this.rejectReason = e.target.value; }}>{this.rejectReason}</textarea>
             <div class="reject-form-btns">
               <button class="doc-v2-reject-confirm" disabled={!this.rejectReason.trim()}

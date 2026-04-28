@@ -90,7 +90,7 @@ tr.row-active:hover td{background:#EBF2FB}
 .badge-xs{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
 
 /* ═══ DETAIL PANEL ═══ */
-.detail{width:380px;flex-shrink:0;border-left:1px solid #E2E8F0;background:#fff;overflow-y:auto;display:flex;flex-direction:column}
+.detail{width:380px;flex-shrink:0;border-left:1px solid #E2E8F0;background:#fff;overflow-y:auto;display:flex;flex-direction:column;height:100%}
 .detail-header{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 16px 12px;border-bottom:1px solid #F1F5F9;background:#fff;position:sticky;top:0;z-index:10;flex-shrink:0}
 .det-name{font:700 14px 'Outfit',sans-serif;color:#0D1F35;line-height:1.3}
 .det-sub{font-size:11px;color:#64748B;margin-top:3px}
@@ -201,7 +201,7 @@ tr.row-active:hover td{background:#EBF2FB}
 .btn-retry{padding:8px 22px;border-radius:8px;border:none;background:#074994;color:#fff;font:700 13px 'Outfit',sans-serif;cursor:pointer;margin-top:4px}
 
 /* ── Wide detail panel ── */
-.detail-wide { width: 720px !important; }
+.detail-wide { width: min(720px, calc(100vw - 180px)) !important; }
 
 /* ── Revamped detail header ── */
 .det-header-left { display:flex;align-items:center;gap:12px }
@@ -209,10 +209,10 @@ tr.row-active:hover td{background:#EBF2FB}
 .det-header-right { display:flex;align-items:center;gap:10px;margin-left:auto }
 
 /* ── Two-column layout ── */
-.det-body-wide { display:grid;grid-template-columns:260px 1fr;gap:0;flex:1;min-height:0;overflow:hidden }
+.det-body-wide { display:grid;grid-template-columns:260px 1fr;gap:0;flex:1;min-height:0;overflow:hidden;height:calc(100% - 60px) }
 .det-body-narrow { display:flex;flex-direction:column;flex:1;overflow-y:auto }
-.det-col-left { overflow-y:auto;border-right:1px solid #F1F5F9;padding:14px 14px;display:flex;flex-direction:column;gap:0 }
-.det-col-right { overflow-y:auto;padding:14px 16px;background:#FAFBFC }
+.det-col-left { overflow-y:auto;border-right:1px solid #F1F5F9;padding:14px;display:flex;flex-direction:column;gap:0;height:100% }
+.det-col-right { overflow-y:auto;padding:14px 16px;background:#FAFBFC;height:100% }
 .det-section-title { font:700 10px 'Outfit',sans-serif;color:#64748B;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #F1F5F9 }
 .det-doc-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:10px }
 .pending-count-badge { padding:3px 10px;background:#FFF8E6;color:#B8860B;border:1px solid rgba(184,134,11,.25);border-radius:20px;font-size:11px;font-weight:700 }
@@ -260,3 +260,8 @@ tr.row-active:hover td{background:#EBF2FB}
 .doc-v2-reject-confirm:not(:disabled):hover { background:#7A0808 }
 .doc-v2-reject-cancel { padding:9px 16px;border-radius:7px;border:1px solid #E2E8F0;background:#fff;color:#64748B;font:600 12.5px 'DM Sans',sans-serif;cursor:pointer }
 .doc-v2-reject-cancel:hover { background:#F0F4F8 }
+
+/* ── Doc reviewed variants ── */
+.doc-v2-reviewed { font-size:11.5px;padding:6px 10px;border-radius:6px;margin-bottom:6px }
+.doc-v2-reviewed-ok  { color:#0B7A5B;background:#E6F5F0 }
+.doc-v2-reviewed-fail{ color:#900909;background:#FDE8E8 }
