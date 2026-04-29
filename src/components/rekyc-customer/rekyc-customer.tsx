@@ -1055,12 +1055,12 @@ export class RekycCustomer {
     case 'pan_upfront': return (
       <div class="scr">
         <div class="bank-row"><div class="bank-logo">NB</div><div><strong>Identity Verification</strong><br/><span class="t2">Required before proceeding</span></div></div>
-        {this.cust?.panStep?.status === 'Verified'
+        {(this.panVerified || this.cust?.panStep?.status === 'Verified')
           ? <div class="resume-notice">
               <div class="rn-icon">✓</div>
               <div class="rn-body">
                 <div class="rn-title">PAN already verified</div>
-                <div class="rn-sub">PAN was verified in a previous session. You can continue without re-entering, or update your details below.</div>
+                <div class="rn-sub">PAN confirmed as <strong>{this.panNum}</strong>. You can continue or update below.</div>
               </div>
             </div>
           : this.renderNotice('info', <span>To confirm your identity, please enter your PAN details. This is a mandatory step for all Re-KYC journeys.</span>)
@@ -1832,30 +1832,61 @@ export class RekycCustomer {
       </div>
     );
 
-    case 'success': return (
+    case 'success': {
+      const isScheduled = !!(this.scheduleSlot);
+      return (
       <div class="scr tc">
-        <div class="suc-icon">✓</div>
-        <h2>KYC Submitted Successfully</h2>
-        <p class="t2" style={{ marginBottom: '12px' }}>Thank you, <strong>{c.name.split(' ')[0]}</strong>. Your submission is under review.</p>
-        {this.renderOfferTeaser(true)}
-        <div class="data-card" style={{ textAlign: 'left', marginTop: '12px' }}>
-          <div class="d-row"><span class="d-lbl">Status</span><span class="d-val" style={{ color: '#B8860B' }}>Under Review</span></div>
-          <div class="d-row"><span class="d-lbl">Submitted On</span><span class="d-val">{new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
-          <div class="d-row"><span class="d-lbl">Reference</span><span class="d-val" style={{ fontFamily: 'monospace', fontWeight: '700' }}>KYC-2026-{c.acct.slice(-4)}</span></div>
-          <div class="d-row"><span class="d-lbl">Expected TAT</span><span class="d-val">2–3 working days</span></div>
+        <div class="suc-icon" style={{ background: isScheduled ? 'linear-gradient(135deg,#074994,#3067A6)' : undefined }}>
+          {isScheduled ? '📅' : '✓'}
         </div>
-        <div class="ref-card" style={{ background: 'var(--pri-bg)', marginTop: '12px', textAlign: 'left' }}>
-          <div class="ref-label">WHAT HAPPENS NEXT</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--t2)', lineHeight: '1.6' }}>
-            Your details will be verified by the bank within 2–3 working days. You will receive a confirmation SMS and email once approved. Your reward will be credited upon successful verification.
-          </div>
-        </div>
+        <h2>{isScheduled ? 'VKYC Scheduled' : 'KYC Submitted Successfully'}</h2>
+        <p class="t2" style={{ marginBottom: '12px' }}>
+          {isScheduled
+            ? <span>Thank you, <strong>{c.name.split(' ')[0]}</strong>. Your Video KYC session has been scheduled.</span>
+            : <span>Thank you, <strong>{c.name.split(' ')[0]}</strong>. Your submission is under review.</span>
+          }
+        </p>
+
+        {isScheduled
+          ? <div>
+              <div class="data-card" style={{ textAlign: 'left', marginTop: '12px', marginBottom: '12px' }}>
+                <div class="d-row"><span class="d-lbl">VKYC Scheduled</span><span class="d-val" style={{ color: '#074994', fontWeight: '700' }}>{this.scheduleSlot}</span></div>
+                <div class="d-row"><span class="d-lbl">Reference</span><span class="d-val" style={{ fontFamily: 'monospace', fontWeight: '700' }}>KYC-2026-{c.acct.slice(-4)}</span></div>
+                <div class="d-row"><span class="d-lbl">Link Valid For</span><span class="d-val">3 days from now</span></div>
+              </div>
+              <div class="ref-card" style={{ background: '#EBF2FB', marginBottom: '14px', textAlign: 'left' }}>
+                <div class="ref-label">WHAT HAPPENS NEXT</div>
+                <div style={{ fontSize: '12.5px', color: 'var(--t2)', lineHeight: '1.7' }}>
+                  ✓ A VKYC link has been sent to your registered mobile number.<br/>
+                  ✓ Click the link at your scheduled time to join your Video KYC session.<br/>
+                  ⚠ Please complete VKYC within <strong>3 days</strong> to finalise your KYC submission.<br/>
+                  ✓ Keep your PAN card ready for the video session.
+                </div>
+              </div>
+            </div>
+          : <div>
+              {this.renderOfferTeaser(true)}
+              <div class="data-card" style={{ textAlign: 'left', marginTop: '12px' }}>
+                <div class="d-row"><span class="d-lbl">Status</span><span class="d-val" style={{ color: '#B8860B' }}>Under Review</span></div>
+                <div class="d-row"><span class="d-lbl">Submitted On</span><span class="d-val">{new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
+                <div class="d-row"><span class="d-lbl">Reference</span><span class="d-val" style={{ fontFamily: 'monospace', fontWeight: '700' }}>KYC-2026-{c.acct.slice(-4)}</span></div>
+                <div class="d-row"><span class="d-lbl">Expected TAT</span><span class="d-val">2–3 working days</span></div>
+              </div>
+              <div class="ref-card" style={{ background: 'var(--pri-bg)', marginTop: '12px', textAlign: 'left' }}>
+                <div class="ref-label">WHAT HAPPENS NEXT</div>
+                <div style={{ fontSize: '12.5px', color: 'var(--t2)', lineHeight: '1.6' }}>
+                  Your details will be verified by the bank within 2–3 working days. You will receive a confirmation SMS and email once approved.
+                </div>
+              </div>
+            </div>
+        }
         <button class="btn-accent" style={{ marginTop: '16px' }} onClick={() => downloadAck(c.id, c.name, c.kycType || 'KYC Update')}>
-          ⬇ Download Acknowledgement
+          Download Acknowledgement
         </button>
         <button class="btn-primary" style={{ marginTop: '10px' }} onClick={() => this.reset()}>Back to Home</button>
       </div>
-    );
+      );
+    }
 
     default: return <div>Unknown screen</div>;
     }
