@@ -192,7 +192,7 @@ export class RekycCustomer {
     const threeMonthsLater = new Date();
     threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
 
-    // Check if POI is missing
+    // Check if POI is missing — use both DB and session state
     const hasPoi = cust.poiStep?.status === 'Verified' || docs.length > 0;
     const hasPoa = cust.poaStep?.status === 'Verified' || docs.length > 1;
 
@@ -275,9 +275,12 @@ export class RekycCustomer {
   getResumeScreen(): Screen {
     const c = this.cust;
     if (!c) return 'landing';
-    const panDone = c.panStep?.status === 'Verified';
-    const aadDone = c.poiStep?.status === 'Verified';
-    const docDone = !!(c as any).docUploadDate || (c.documents && c.documents.length > 0);
+    // Use both session state and DB
+    const panDone = this.panVerified || c.panStep?.status === 'Verified';
+    const aadDone = this.digilockerVerified || c.poiStep?.status === 'Verified';
+    const docDone = !!(this.uploadedDocs && (this.uploadedDocs['docF'] || this.uploadedDocs['docB']))
+      || !!(c as any).docUploadDate
+      || (c.documents && c.documents.filter((d: any) => d.status !== 'rejected').length > 0);
 
     if (panDone && aadDone && docDone) return 'full_vkyc';
     if (panDone && aadDone) return 'full_doc';
@@ -289,13 +292,18 @@ export class RekycCustomer {
   getJourneySteps() {
     const c = this.cust;
     if (!c) return [];
-    const panDone  = c.panStep?.status === 'Verified';
-    const aadDone  = c.poiStep?.status === 'Verified';
-    const docDone  = !!(c as any).docUploadDate || (c.documents && c.documents.filter((d:any) => d.status !== 'rejected').length > 0);
+    // Use session state (this.panVerified etc) for mid-journey — DB only updated at end
+    const panDone  = this.panVerified || c.panStep?.status === 'Verified';
+    const aadDone  = this.digilockerVerified
+      || (this.otpVals['adho']?.filter((v: string) => v).length === 6)
+      || c.poiStep?.status === 'Verified';
+    const docDone  = !!(this.uploadedDocs && (this.uploadedDocs['docF'] || this.uploadedDocs['docB']))
+      || !!(c as any).docUploadDate
+      || (c.documents && c.documents.filter((d: any) => d.status !== 'rejected').length > 0);
     const vkycDone = c.vkycStep?.status === 'Completed';
     const vkycPend = c.vkycStep?.status === 'Pending';
     return [
-      { label: 'PAN Verification',  done: panDone,  active: !panDone },
+      { label: 'PAN Verification',   done: panDone,  active: !panDone },
       { label: 'Aadhaar Validation', done: aadDone,  active: panDone && !aadDone },
       { label: 'Document Upload',    done: docDone,  active: aadDone && !docDone },
       { label: 'Video KYC',          done: vkycDone, active: docDone && (vkycPend || !vkycDone) },
@@ -769,7 +777,7 @@ export class RekycCustomer {
   }
 
   renderProgressBar() {
-    const midScreens: string[] = ['full_pan','full_pan_result','full_aadhaar','full_aadhaar_otp','digilocker','digilocker_result','full_doc','full_vkyc','full_vkyc_live'];
+    const midScreens: string[] = ['full_intro','full_pan','full_pan_result','full_aadhaar','full_aadhaar_otp','digilocker','digilocker_result','full_doc','full_vkyc','full_vkyc_live'];
     if (!midScreens.includes(this.screen)) return null;
     const steps = this.getJourneySteps();
     return (
@@ -1321,15 +1329,35 @@ export class RekycCustomer {
 
         <h3 class="sec-title">Steps to Complete</h3>
         <div class="step-list">
-          {['PAN Verification', 'Aadhaar Validation', 'Document Upload', 'Video KYC'].map((s, i) =>
-            <div class={{ 'step-item': true, active: i === 0 }}><div class="step-dot">{i + 1}</div><span>{s}</span></div>
+          <div class={{ 'step-item': true, active: false, 'step-done': this.panVerified }}>
+            <div class="step-dot">{this.panVerified ? '✓' : '1'}</div>
+            <span>PAN Verification {this.panVerified ? <span style={{ color: 'var(--acc)', fontSize: '11px', fontWeight: '700' }}> — Completed</span> : ''}</span>
+          </div>
+          {['Aadhaar Validation', 'Document Upload', 'Video KYC'].map((s, i) =>
+            <div class={{ 'step-item': true, active: i === 0 && this.panVerified }}><div class="step-dot">{i + 2}</div><span>{s}</span></div>
           )}
         </div>
         <button class="btn-primary"
           disabled={this.consents['r_constitution'] && !this.newConstitution}
-          onClick={() => this.go('full_pan')}>
-          Begin Verification
+          onClick={() => {
+            // Skip PAN step if already verified during upfront check
+            if (this.panVerified) {
+              this.go('full_aadhaar');
+            } else {
+              this.go('full_pan');
+            }
+          }}>
+          {this.panVerified ? 'Continue to Aadhaar Validation' : 'Begin Verification'}
         </button>
+        {this.panVerified && (
+          <div class="hint tc" style={{ marginTop: '8px' }}>
+            PAN already verified as <strong>{this.panNum}</strong>.
+            <button style={{ background: 'none', border: 'none', color: 'var(--t2)', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', marginLeft: '4px' }}
+              onClick={() => { this.panVerified = false; this.go('full_pan'); }}>
+              Change PAN
+            </button>
+          </div>
+        )}
       </div>
     );
 
@@ -1586,31 +1614,38 @@ export class RekycCustomer {
         <button class="btn-primary" style={{ marginBottom: '12px' }}
           onClick={async () => {
             // Pre-configure VKYC demo config with this customer's details
-            const vkycApi = (window as any).__VKYC_API__ || 'https://vkyc-api-production.up.railway.app/api/v1';
-            try {
-              await fetch(`${vkycApi}/demo-config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  applicant: {
-                    name: c.name,
-                    mobile: c.mobile,
-                    appId: this.customerId,
-                    product: (c as any).relationship || 'Banking Account',
-                    pan: this.panNum || c.pan,
-                    dob: this.panDob || c.dob,
-                    address: c.address,
-                  }
-                })
-              });
-            } catch(e) { /* continue even if config fails */ }
+            const vkycApi = (window as any).__VKYC_API__ || '';
+            if (vkycApi) {
+              try {
+                await fetch(`${vkycApi}/demo-config`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    applicant: {
+                      name: c.name,
+                      mobile: c.mobile,
+                      appId: this.customerId,
+                      product: (c as any).relationship || 'Banking Account',
+                      pan: this.panNum || c.pan,
+                      dob: this.panDob || c.dob,
+                      address: c.address,
+                    }
+                  })
+                });
+              } catch(e) { /* continue even if config fails */ }
+            }
 
-            // Also update rekyc status to Pending VKYC
+            // Mark as Pending VKYC in Re-KYC
             await this.completeKyc('Full KYC');
 
             // Redirect to VKYC applicant journey
-            const vkycUi = (window as any).__VKYC_UI__ || 'https://vkyc-ui-production.up.railway.app';
-            window.location.href = `${vkycUi}?role=applicant&caseId=${this.customerId}&rekycCallback=${encodeURIComponent(window.location.origin)}`;
+            const vkycUi = (window as any).__VKYC_UI__;
+            if (vkycUi) {
+              window.location.href = `${vkycUi}?role=applicant&caseId=${this.customerId}`;
+            } else {
+              // VKYC_UI_URL not configured — show the URL to navigate to
+              this.go('success');
+            }
           }}>
           Proceed to Video KYC →
         </button>
