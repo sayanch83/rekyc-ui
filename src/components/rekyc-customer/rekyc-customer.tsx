@@ -1138,7 +1138,7 @@ export class RekycCustomer {
 
         <h3 class="sec-title">Personal Information</h3>
         <div class="data-card">
-          {([['Full Name', c.name],['Date of Birth', c.dob],['PAN', c.pan],['Aadhaar', c.aadhaar],['Constitution', c.constitution]] as [string,string][]).map(([l,v]) =>
+          {([['Full Name', c.name],['Date of Birth', c.dob || '—'],['PAN', c.pan && c.pan !== 'PENDING' ? c.pan : '—'],['Aadhaar', c.aadhaar && c.aadhaar !== 'PENDING' ? c.aadhaar : '—'],['Constitution', c.constitution]] as [string,string][]).map(([l,v]) =>
             <div class="d-row"><span class="d-lbl">{l}</span><span class="d-val">{v}</span></div>
           )}
         </div>

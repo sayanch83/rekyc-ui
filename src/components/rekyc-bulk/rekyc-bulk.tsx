@@ -131,7 +131,7 @@ export class ReKycBulk {
         const payload = {
           id: newId, name: row.name, acct: `XXXX${acctClean}`,
           mobile: mobileFormatted, email: row.email,
-          dob: '', pan: 'PENDING', aadhaar: 'PENDING',
+          dob: '', pan: '', aadhaar: '',
           constitution: 'Individual', relationship: row.relationship,
           address: [row.addr1, row.addr2, row.addr3].filter(Boolean).join(', '),
           addr1: row.addr1, addr2: row.addr2, addr3: row.addr3,
