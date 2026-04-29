@@ -6,7 +6,9 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WWW = path.join(__dirname, 'www');
 const PORT = process.env.PORT || 3333;
-const API_URL = process.env.API_URL || 'http://localhost:4000';
+const API_URL  = process.env.API_URL  || 'http://localhost:4000';
+const VKYC_API = process.env.VKYC_API_URL || '';
+const VKYC_UI  = process.env.VKYC_UI_URL  || '';
 
 // Firebase public config (safe to expose — these are client-side keys)
 const FB = {
@@ -87,6 +89,8 @@ function serveHtml(res, fp) {
       window.__FIREBASE_SENDER_ID__ = '${FB.SENDER_ID}';
       window.__FIREBASE_APP_ID__ = '${FB.APP_ID}';
       window.__FIREBASE_VAPID_KEY__ = '${FB.VAPID_KEY}';
+      window.__VKYC_API__ = '${VKYC_API}';
+      window.__VKYC_UI__ = '${VKYC_UI}';
       window.__REKYC_API__`);
 
     const buildDir = path.join(WWW, 'build');

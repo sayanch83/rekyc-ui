@@ -1573,25 +1573,53 @@ export class RekycCustomer {
     case 'full_vkyc': return (
       <div class="scr">
         <div class="vkyc-success-icon">✓</div>
-        <h2 class="vkyc-done-title">Details Updated Successfully!</h2>
-        <p class="t2 tc" style={{ marginBottom: '16px' }}>PAN, Aadhaar and documents verified. Complete Video KYC to finalise.</p>
-        <div class="vkyc-link-card">
-          <div class="vkyc-link-label">Your VKYC Session Link</div>
-          <div class="vkyc-link-url">https://vkyc.nationalbank.co.in/s/KYC2026{c.acct.slice(-4)}</div>
-          <button class="btn-accent" style={{ marginTop: '12px' }} onClick={() => this.go('full_vkyc_live')}>Start Video KYC Now</button>
-        </div>
-        <div class="vkyc-later-notice">
-          <div class="vkyc-later-icon">📲</div>
-          <div class="vkyc-later-text">
-            <strong>Prefer to complete later?</strong><br/>
-            Link sent to <strong>{this.maskedEnteredMobile}</strong> and your email. Valid for <strong>3 days</strong>.
-          </div>
-        </div>
-        <div class="vkyc-steps-note">
+        <h2 class="vkyc-done-title">Almost There!</h2>
+        <p class="t2 tc" style={{ marginBottom: '16px' }}>PAN, Aadhaar and documents verified. One last step — complete your Video KYC session with a National Bank officer.</p>
+
+        <div class="vkyc-steps-note" style={{ marginBottom: '20px' }}>
           <div class="vkyc-step-row">✓ <span>PAN verified</span></div>
           <div class="vkyc-step-row">✓ <span>Aadhaar validated</span></div>
           <div class="vkyc-step-row">✓ <span>Documents uploaded</span></div>
           <div class="vkyc-step-row pending">◉ <span>Video KYC — Pending</span></div>
+        </div>
+
+        <button class="btn-primary" style={{ marginBottom: '12px' }}
+          onClick={async () => {
+            // Pre-configure VKYC demo config with this customer's details
+            const vkycApi = (window as any).__VKYC_API__ || 'https://vkyc-api-production.up.railway.app/api/v1';
+            try {
+              await fetch(`${vkycApi}/demo-config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  applicant: {
+                    name: c.name,
+                    mobile: c.mobile,
+                    appId: this.customerId,
+                    product: (c as any).relationship || 'Banking Account',
+                    pan: this.panNum || c.pan,
+                    dob: this.panDob || c.dob,
+                    address: c.address,
+                  }
+                })
+              });
+            } catch(e) { /* continue even if config fails */ }
+
+            // Also update rekyc status to Pending VKYC
+            await this.completeKyc('Full KYC');
+
+            // Redirect to VKYC applicant journey
+            const vkycUi = (window as any).__VKYC_UI__ || 'https://vkyc-ui-production.up.railway.app';
+            window.location.href = `${vkycUi}?role=applicant&caseId=${this.customerId}&rekycCallback=${encodeURIComponent(window.location.origin)}`;
+          }}>
+          Proceed to Video KYC →
+        </button>
+
+        <div class="vkyc-later-notice">
+          <div class="vkyc-later-text">
+            <strong>Prefer to complete later?</strong><br/>
+            You can return to this link anytime within 3 days. The Video KYC can be completed separately.
+          </div>
         </div>
       </div>
     );
