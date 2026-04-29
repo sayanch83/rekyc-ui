@@ -309,3 +309,40 @@ select.field-input{appearance:none;cursor:pointer}
 /* ── Disabled action card ── */
 .action-card-disabled{opacity:.45;cursor:not-allowed !important;pointer-events:none}
 .action-card-disabled .ac-arrow{color:#CBD5E1}
+
+/* ── VKYC Schedule Modal ── */
+.sched-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:flex-end;justify-content:center }
+.sched-modal { background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden }
+.sched-header { padding:18px 18px 12px;border-bottom:1px solid #F1F5F9;position:relative }
+.sched-title { font:700 16px 'Outfit',sans-serif;color:#0D1F35 }
+.sched-sub { font-size:12.5px;color:#64748B;margin-top:3px }
+.sched-close { position:absolute;top:14px;right:14px;background:none;border:none;font-size:18px;cursor:pointer;color:#94A3B8;padding:4px }
+.sched-body { flex:1;overflow-y:auto;padding:16px }
+.sched-step-label { font:700 12px 'Outfit',sans-serif;color:#474F5A;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;margin-top:14px }
+.sched-step-label:first-child { margin-top:0 }
+
+/* Date cards */
+.sched-cal { display:flex;gap:8px;overflow-x:auto;padding-bottom:4px }
+.sched-date-card { flex-shrink:0;width:68px;padding:10px 6px;border-radius:10px;border:1.5px solid #E2E8F0;background:#fff;cursor:pointer;text-align:center;transition:all .15s }
+.sched-date-card:hover { border-color:#074994;background:#EBF2FB }
+.sched-date-on { border-color:#074994!important;background:#074994!important;color:#fff!important }
+.sched-date-on .sched-dow,.sched-date-on .sched-day,.sched-date-on .sched-mon,.sched-date-on .sched-avail { color:#fff!important }
+.sched-dow { font-size:10px;font-weight:700;color:#94A3B8;margin-bottom:4px }
+.sched-day { font-size:20px;font-weight:800;color:#0D1F35;line-height:1 }
+.sched-mon { font-size:10px;color:#64748B;margin-top:2px }
+.sched-avail { font-size:9.5px;color:#0B7A5B;margin-top:4px;font-weight:600 }
+
+/* Time grid */
+.sched-time-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px }
+.sched-slot { padding:9px 4px;border-radius:8px;border:1.5px solid #E2E8F0;background:#fff;font-size:12.5px;font-weight:600;color:#1C2B3A;cursor:pointer;transition:all .15s;position:relative }
+.sched-slot:hover:not(:disabled) { border-color:#074994;background:#EBF2FB }
+.sched-slot-on { border-color:#074994!important;background:#074994!important;color:#fff!important }
+.sched-slot-off { opacity:.4;cursor:not-allowed!important;background:#F8FAFC }
+.sched-booked { display:block;font-size:9px;color:#94A3B8;font-weight:400;margin-top:2px }
+
+/* Footer */
+.sched-footer { padding:14px 16px;border-top:1px solid #F1F5F9;display:flex;gap:10px }
+.sched-cancel { padding:12px 20px;border-radius:10px;border:1px solid #E2E8F0;background:#fff;color:#64748B;font:600 13px 'DM Sans',sans-serif;cursor:pointer }
+.sched-confirm { flex:1;padding:12px;border-radius:10px;border:none;background:#074994;color:#fff;font:700 14px 'Outfit',sans-serif;cursor:pointer;transition:all .15s }
+.sched-confirm:disabled { opacity:.45;cursor:not-allowed }
+.sched-confirm:not(:disabled):hover { background:#2D6FBF }

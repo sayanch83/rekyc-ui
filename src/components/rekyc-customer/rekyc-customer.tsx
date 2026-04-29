@@ -95,7 +95,12 @@ export class RekycCustomer {
   @State() digilockerLoading = false;
   @State() newConstitution = '';
   @State() simLoading = false;
-  @State() linkToken = '';          // from sessionStorage (set by router)
+  @State() linkToken = '';
+  @State() showVkycSchedule = false;  // show schedule modal
+  @State() scheduleDate = '';
+  @State() scheduleSlot = '';
+  @State() scheduleConfirmed = false;
+  @State() scheduleSlots: Array<{date:string;label:string;slots:Array<{time:string;available:boolean}>}> = [];
   @State() resumeMode = false; // true when resuming a partial journey
   @State() linkError = '';
   @State() tokenValidating = false;
@@ -215,6 +220,97 @@ export class RekycCustomer {
     }
 
     return { required: false, reason: '' };
+  }
+
+  generateScheduleSlots() {
+    const result = [];
+    const today = new Date();
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const allSlots = [];
+    for (let h = 10; h < 17; h++) {
+      for (const m of [0, 30]) {
+        if (h === 16 && m === 30) break;
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const h12 = h <= 12 ? h : h - 12;
+        allSlots.push({ time: `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}` });
+      }
+    }
+    let daysAdded = 0, offset = 1;
+    while (daysAdded < 5) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + offset++);
+      const dow = date.getDay();
+      if (dow === 0 || dow === 6) continue;
+      const label = `${days[dow]}, ${date.getDate()} ${months[date.getMonth()]}`;
+      const dateStr = date.toISOString().slice(0, 10);
+      const slots = allSlots.map(s => ({ time: s.time, available: Math.random() > 0.4 }));
+      let avail = slots.filter(s => s.available).length;
+      for (let i = 0; i < slots.length && avail < 3; i++) {
+        if (!slots[i].available) { slots[i].available = true; avail++; }
+      }
+      result.push({ date: dateStr, label, slots });
+      daysAdded++;
+    }
+    return result;
+  }
+
+  async scheduleVkyc() {
+    if (!this.scheduleSlot || !this.scheduleDate) return;
+    const c = this.cust!;
+    const vkycApi = (window as any).__VKYC_API__ || '';
+    const apiBase = (window as any).__REKYC_API__ || 'https://rekyc-work-production.up.railway.app';
+
+    // 1. Save scheduled slot to Re-KYC
+    await fetch(`${apiBase}/api/customers/${this.customerId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vkycScheduled: `${this.scheduleDate} · ${this.scheduleSlot}`,
+        vkycStep: { status: 'Scheduled', date: this.scheduleDate, slot: this.scheduleSlot },
+        status: 'Pending VKYC',
+        reminders: [...(c.reminders || []), { ch: 'System', date: new Date().toLocaleDateString('en-IN'), status: `VKYC scheduled for ${this.scheduleDate} · ${this.scheduleSlot}` }],
+      })
+    });
+
+    // 2. Add customer to VKYC agent queue
+    if (vkycApi) {
+      try {
+        await fetch(`${vkycApi}/queue/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: this.customerId,
+            name: c.name,
+            mobile: c.mobile,
+            appId: this.customerId,
+            product: (c as any).relationship || 'Banking Account',
+            pan: this.panNum || c.pan,
+            dob: this.panDob || c.dob,
+            address: c.address,
+            scheduledSlot: `${this.scheduleDate} · ${this.scheduleSlot}`,
+            status: 'scheduled',
+          })
+        });
+      } catch(e) { /* non-critical */ }
+    }
+
+    // 3. Send SMS with VKYC link via Re-KYC API
+    await fetch(`${apiBase}/api/vkyc/schedule-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        custId: this.customerId,
+        slot: `${this.scheduleDate} · ${this.scheduleSlot}`,
+      })
+    });
+
+    this.scheduleConfirmed = true;
+    this.showVkycSchedule = false;
+
+    // Mark journey as complete (Pending VKYC)
+    await this.completeKyc('Full KYC');
+    this.go('success');
   }
 
   startSession() {
@@ -1611,51 +1707,103 @@ export class RekycCustomer {
           <div class="vkyc-step-row pending">◉ <span>Video KYC — Pending</span></div>
         </div>
 
-        <button class="btn-primary" style={{ marginBottom: '12px' }}
+        <button class="btn-primary" style={{ marginBottom: '10px' }}
           onClick={async () => {
-            // Pre-configure VKYC demo config with this customer's details
             const vkycApi = (window as any).__VKYC_API__ || '';
             if (vkycApi) {
               try {
                 await fetch(`${vkycApi}/demo-config`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    applicant: {
-                      name: c.name,
-                      mobile: c.mobile,
-                      appId: this.customerId,
-                      product: (c as any).relationship || 'Banking Account',
-                      pan: this.panNum || c.pan,
-                      dob: this.panDob || c.dob,
-                      address: c.address,
-                    }
-                  })
+                  body: JSON.stringify({ applicant: { name: c.name, mobile: c.mobile, appId: this.customerId, product: (c as any).relationship || 'Banking Account', pan: this.panNum || c.pan, dob: this.panDob || c.dob, address: c.address } })
                 });
-              } catch(e) { /* continue even if config fails */ }
+              } catch(e) {}
             }
-
-            // Mark as Pending VKYC in Re-KYC
             await this.completeKyc('Full KYC');
-
-            // Redirect to VKYC applicant journey
             const vkycUi = (window as any).__VKYC_UI__;
             if (vkycUi) {
               window.location.href = `${vkycUi}?role=applicant&caseId=${this.customerId}`;
             } else {
-              // VKYC_UI_URL not configured — show the URL to navigate to
               this.go('success');
             }
           }}>
-          Proceed to Video KYC →
+          Proceed to Video KYC Now →
         </button>
 
-        <div class="vkyc-later-notice">
-          <div class="vkyc-later-text">
-            <strong>Prefer to complete later?</strong><br/>
-            You can return to this link anytime within 3 days. The Video KYC can be completed separately.
+        <button class="btn-secondary" style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1.5px solid var(--pri)', background: '#fff', color: 'var(--pri)', font: '600 14px var(--font)', cursor: 'pointer' }}
+          onClick={() => {
+            this.scheduleSlots = this.generateScheduleSlots();
+            this.scheduleDate = '';
+            this.scheduleSlot = '';
+            this.showVkycSchedule = true;
+          }}>
+          Schedule VKYC for Later
+        </button>
+
+        <div class="vkyc-later-notice" style={{ marginTop: '12px' }}>
+          <div class="vkyc-later-text" style={{ fontSize: '12px' }}>
+            <strong>Schedule VKYC for a convenient time.</strong> An SMS with your VKYC link will be sent and your slot will be reserved with a National Bank officer.
           </div>
         </div>
+
+        {/* ── Schedule modal ── */}
+        {this.showVkycSchedule && (
+          <div class="sched-backdrop" onClick={() => { this.showVkycSchedule = false; }}>
+            <div class="sched-modal" onClick={(e: any) => e.stopPropagation()}>
+              <div class="sched-header">
+                <div class="sched-title">Schedule Video KYC</div>
+                <div class="sched-sub">Select a convenient date and time within the next 5 working days</div>
+                <button class="sched-close" onClick={() => { this.showVkycSchedule = false; }}>✕</button>
+              </div>
+
+              <div class="sched-body">
+                <div class="sched-step-label">Step 1 — Select a date</div>
+                <div class="sched-cal">
+                  {this.scheduleSlots.map(day => (
+                    <button class={{ 'sched-date-card': true, 'sched-date-on': this.scheduleDate === day.date }}
+                      onClick={() => { this.scheduleDate = day.date; this.scheduleSlot = ''; }}>
+                      <div class="sched-dow">{day.label.split(',')[0]}</div>
+                      <div class="sched-day">{day.label.split(', ')[1]?.split(' ')[0]}</div>
+                      <div class="sched-mon">{day.label.split(', ')[1]?.split(' ')[1]}</div>
+                      <div class="sched-avail">{day.slots.filter(s => s.available).length} slots</div>
+                    </button>
+                  ))}
+                </div>
+
+                {this.scheduleDate && (() => {
+                  const day = this.scheduleSlots.find(d => d.date === this.scheduleDate);
+                  if (!day) return null;
+                  return (
+                    <div>
+                      <div class="sched-step-label">Step 2 — Pick a time on {day.label}</div>
+                      <div class="sched-time-grid">
+                        {day.slots.map(slot => {
+                          const key = `${day.label} · ${slot.time}`;
+                          return (
+                            <button class={{ 'sched-slot': true, 'sched-slot-on': this.scheduleSlot === key, 'sched-slot-off': !slot.available }}
+                              disabled={!slot.available}
+                              onClick={() => { if (slot.available) this.scheduleSlot = key; }}>
+                              {slot.time}
+                              {!slot.available && <span class="sched-booked">Booked</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div class="sched-footer">
+                <button class="sched-cancel" onClick={() => { this.showVkycSchedule = false; }}>Cancel</button>
+                <button class="sched-confirm" disabled={!this.scheduleSlot}
+                  onClick={() => this.scheduleVkyc()}>
+                  Confirm &amp; Send VKYC Link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
 
