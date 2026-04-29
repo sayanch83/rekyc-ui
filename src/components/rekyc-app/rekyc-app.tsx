@@ -22,13 +22,21 @@ export class RekycApp {
         const result = await validateLinkToken(token);
         if (result.valid && result.custId) {
           this.customerId = result.custId;
+          // Persist custId to localStorage so reopening after completion shows correct customer
+          localStorage.setItem(`rekyc_cust_${token.slice(0,8)}`, result.custId);
+          localStorage.setItem('rekyc_last_cust_id', result.custId);
         }
-        // Store everything in sessionStorage — Prop timing is unreliable
         sessionStorage.setItem('rekyc_link_token', token);
         sessionStorage.setItem('rekyc_masked_mobile', result.maskedMobile || '');
         sessionStorage.setItem('rekyc_cust_id', result.custId || '');
       } catch(e) {
         sessionStorage.setItem('rekyc_link_token', token);
+        // Token invalid/consumed — try to recover custId from localStorage
+        const lastCustId = localStorage.getItem('rekyc_last_cust_id');
+        if (lastCustId) {
+          this.customerId = lastCustId;
+          sessionStorage.setItem('rekyc_cust_id', lastCustId);
+        }
       }
       window.history.replaceState({}, '', '/customer');
     } else if (urlId) {

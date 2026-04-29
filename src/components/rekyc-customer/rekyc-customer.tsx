@@ -116,7 +116,9 @@ export class RekycCustomer {
     if (typeof window !== 'undefined') {
       storedToken                = sessionStorage.getItem('rekyc_link_token') || '';
       const storedMasked = sessionStorage.getItem('rekyc_masked_mobile') || '';
-      const storedCustId = sessionStorage.getItem('rekyc_cust_id') || '';
+      const storedCustId = sessionStorage.getItem('rekyc_cust_id')
+        || localStorage.getItem('rekyc_last_cust_id')
+        || '';
 
       if (storedToken) {
         // Token link — use stored custId, not the Prop
