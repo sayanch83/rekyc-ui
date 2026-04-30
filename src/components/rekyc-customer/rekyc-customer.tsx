@@ -278,7 +278,7 @@ export class RekycCustomer {
     // 2. Add customer to VKYC agent queue
     if (vkycApi) {
       try {
-        await fetch(`${vkycApi}/queue/add`, {
+        await fetch(`${vkycApi}/agent/queue/add`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
